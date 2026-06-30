@@ -1,8 +1,9 @@
 """
-TFC Monte Carlo 仿真引擎 — 基线标定 + 增量模型
+TFC 仿真引擎 — 基线标定 + 增量模型
 
 策略：从已知 Round 3 实际财务数据标定基线参数，
 决策变动通过相对效应模型传播到财务结果。
+每次调用仿真运行一次，返回单次随机结果（含噪声）。
 """
 import random
 import math
@@ -49,7 +50,7 @@ BASELINE = {
 
 @dataclass
 class SimulationResult:
-    """单轮40次迭代的汇总结果"""
+    """单次仿真的结果"""
     round_number: int
     pl: ProfitLoss = field(default_factory=ProfitLoss)
     inv: Investment = field(default_factory=Investment)
@@ -201,42 +202,14 @@ class TFCSimulation:
 
         return pl, inv, roi, kpis
 
-    def run_round(self, n_iterations: int = 40) -> SimulationResult:
-        """运行完整一轮 (40次迭代)"""
-        all_pl = []
-        all_inv = []
-        all_roi = []
-        all_kpis = []
-
-        for i in range(n_iterations):
-            pl, inv, roi, kpis = self.run_single_iteration(i)
-            all_pl.append(pl)
-            all_inv.append(inv)
-            all_roi.append(roi)
-            all_kpis.append(kpis)
-
-        # Average
-        avg_pl = ProfitLoss()
-        for field_name in vars(avg_pl):
-            values = [getattr(p, field_name) for p in all_pl]
-            setattr(avg_pl, field_name, sum(values) / len(values))
-
-        avg_inv = Investment()
-        for field_name in vars(avg_inv):
-            values = [getattr(inv, field_name) for inv in all_inv]
-            setattr(avg_inv, field_name, sum(values) / len(values))
-
-        avg_roi = sum(all_roi) / len(all_roi)
-
-        avg_kpis = {}
-        if all_kpis:
-            for key in all_kpis[0]:
-                avg_kpis[key] = sum(k[key] for k in all_kpis) / len(all_kpis)
+    def run_round(self, iteration: int = 0) -> SimulationResult:
+        """运行单次仿真，返回一次迭代的结果（已去除蒙特卡洛求平均）"""
+        pl, inv, roi, kpis = self.run_single_iteration(iteration)
 
         return SimulationResult(
             round_number=self.decisions.round_number,
-            pl=avg_pl,
-            inv=avg_inv,
-            roi=avg_roi,
-            kpi_values=avg_kpis,
+            pl=pl,
+            inv=inv,
+            roi=roi,
+            kpi_values=kpis,
         )

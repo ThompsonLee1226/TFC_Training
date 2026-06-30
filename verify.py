@@ -39,9 +39,9 @@ def verify():
     print()
 
     # Run simulation
-    print("运行仿真中 (40 iterations × 26 weeks)...")
+    print("运行仿真中 (单次)...")
     sim = TFCSimulation(ROUND3_DECISIONS, base_seed=42)
-    result = sim.run_round(n_iterations=40)
+    result = sim.run_round()
 
     pl = result.pl
     inv = result.inv
