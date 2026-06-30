@@ -21,8 +21,30 @@ from finance import FinanceCalculator, ProfitLoss, Investment
 from decisions import RoundDecisions, ROUND3_DECISIONS
 
 
-# ── Round 3 实际基线 ──
-# 从 Finance 页面直接提取
+# ══════════════════════════════════════════════════════════════════════════════
+# 可调参数 — 集中声明，方便调参
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── 随机种子 ──
+BASE_SEED: int = 42
+
+# ── 蒙特卡洛噪声参数 (高斯分布: μ=均值, σ=标准差) ──
+NOISE_DEMAND_MU: float = 1.0        # 需求波动均值
+NOISE_DEMAND_SIGMA: float = 0.08    # 需求波动标准差 (±8%)
+NOISE_PRODUCTION_MU: float = 1.0    # 生产效率均值
+NOISE_PRODUCTION_SIGMA: float = 0.03  # 生产效率标准差 (±3%)
+NOISE_SERVICE_MU: float = 1.0       # 服务水平均值
+NOISE_SERVICE_SIGMA: float = 0.02   # 服务水平标准差 (±2%)
+NOISE_COST_MU: float = 1.0          # 成本波动均值
+NOISE_COST_SIGMA: float = 0.04      # 成本波动标准差 (±4%)
+
+# ── 安全库存基线 ──
+BASELINE_SAFETY_STOCK_WEEKS: float = 2.4  # Round 3 均值: (2.5+2.7+1.0+2.3+3.5)/5
+
+# ── 项目成本 ──
+SMED_EXTRA_COST: float = 6_000.0    # SMED 培训额外成本
+
+# ── Round 3 实际基线 (从 Finance 页面直接提取) ──
 BASELINE = {
     "revenue": 2_655_320.0,
     "purchase_costs": 815_273.0,
@@ -61,7 +83,7 @@ class SimulationResult:
 class TFCSimulation:
     """TFC 仿真引擎 — 基线标定 + 增量扰动"""
 
-    def __init__(self, decisions: RoundDecisions, base_seed: int = 42):
+    def __init__(self, decisions: RoundDecisions, base_seed: int = BASE_SEED):
         self.decisions = decisions
         self.base_seed = base_seed
 
@@ -114,14 +136,13 @@ class TFCSimulation:
 
         # Safety stock delta
         avg_ss_weeks = sum(dec.supply_chain.safety_stock_weeks.values()) / len(dec.supply_chain.safety_stock_weeks)
-        baseline_ss = 2.4  # average of Round 3: (2.5+2.7+1.0+2.3+3.5)/5
-        ss_delta = avg_ss_weeks / baseline_ss
+        ss_delta = avg_ss_weeks / BASELINE_SAFETY_STOCK_WEEKS
 
         # ── 蒙特卡洛噪声 ──
-        demand_noise = rng.gauss(1.0, 0.08)     # 需求波动 ±8%
-        production_noise = rng.gauss(1.0, 0.03)  # 生产效率 ±3%
-        service_noise = rng.gauss(1.0, 0.02)     # 服务水平 ±2%
-        cost_noise = rng.gauss(1.0, 0.04)        # 成本波动 ±4%
+        demand_noise = rng.gauss(NOISE_DEMAND_MU, NOISE_DEMAND_SIGMA)
+        production_noise = rng.gauss(NOISE_PRODUCTION_MU, NOISE_PRODUCTION_SIGMA)
+        service_noise = rng.gauss(NOISE_SERVICE_MU, NOISE_SERVICE_SIGMA)
+        cost_noise = rng.gauss(NOISE_COST_MU, NOISE_COST_SIGMA)
 
         # ── 从基线计算财务 ──
 
@@ -160,7 +181,7 @@ class TFCSimulation:
         # Projects
         project = BASELINE["project_cost"]
         if dec.operations.smed_training:
-            project += 6_000  # SMED extra cost
+            project += SMED_EXTRA_COST
         if dec.operations.solve_breakdowns_training:
             project += 0  # already in baseline
 

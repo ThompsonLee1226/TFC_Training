@@ -7,9 +7,25 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 import math
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 可调参数 — 集中声明，方便调参
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── 时间与利率 ──
 WEEKS_PER_ROUND = 26  # 半年
-INTEREST_RATE_ANNUAL = 0.15
-INTEREST_RATE_WEEKLY = INTEREST_RATE_ANNUAL / 52
+INTEREST_RATE_ANNUAL: float = 0.15
+INTEREST_RATE_WEEKLY: float = INTEREST_RATE_ANNUAL / 52
+
+# ── 固定资产投资 ──
+FIXED_BUILDING: float = 2_500_000.0
+MACHINERY_VALUE: float = 802_500.0   # bottling lines + mixers
+
+# ── 行政管理成本系数 ──
+COST_PER_INBOUND_ORDER: float = 50.0
+COST_PER_INBOUND_ORDER_LINE: float = 10.0
+COST_PER_OUTBOUND_ORDER: float = 25.0
+COST_PER_OUTBOUND_ORDER_LINE: float = 2.0
+SUPPLIER_RELATIONSHIP_COST_ANNUAL: float = 40_000.0  # €/年
 
 
 @dataclass
@@ -74,10 +90,10 @@ class ProfitLoss:
 @dataclass
 class Investment:
     """投资构成"""
-    fixed_building: float = 2_500_000.0
+    fixed_building: float = FIXED_BUILDING
     inventory_components: float = 0.0
     inventory_finished_goods: float = 0.0
-    machinery: float = 802_500.0   # bottling lines + mixers
+    machinery: float = MACHINERY_VALUE
     payment_terms_net: float = 0.0  # AP - AR
     software: float = 0.0
 
@@ -190,9 +206,11 @@ class FinanceCalculator:
 
         # Administration
         pl.administration_costs = (
-            num_inbound_orders * 50 + num_inbound_order_lines * 10 +
-            num_outbound_orders * 25 + num_outbound_order_lines * 2 +
-            40000 * (WEEKS_PER_ROUND / 52)  # supplier relationship EUR 40k/year
+            num_inbound_orders * COST_PER_INBOUND_ORDER +
+            num_inbound_order_lines * COST_PER_INBOUND_ORDER_LINE +
+            num_outbound_orders * COST_PER_OUTBOUND_ORDER +
+            num_outbound_order_lines * COST_PER_OUTBOUND_ORDER_LINE +
+            SUPPLIER_RELATIONSHIP_COST_ANNUAL * (WEEKS_PER_ROUND / 52)
         )
 
         # Distribution
@@ -210,10 +228,10 @@ class FinanceCalculator:
         )
 
         # ── Investment ──
-        inv.fixed_building = 2_500_000.0
+        inv.fixed_building = FIXED_BUILDING
         inv.inventory_components = avg_component_stock_value
         inv.inventory_finished_goods = avg_finished_goods_stock_value
-        inv.machinery = 802_500.0
+        inv.machinery = MACHINERY_VALUE
         inv.payment_terms_net = payment_terms_ap - payment_terms_ar
         inv.software = 0.0
 

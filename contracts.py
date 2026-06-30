@@ -46,7 +46,11 @@ def encode_promotion_horizon(horizon_str: str) -> float:
 
 # ── 权重模型（基于经济学直觉 + 最小二乘标定） ──────
 
-# 供应商 Contract Index 权重
+# ══════════════════════════════════════════════════════════════════════════════
+# 可调参数 — 集中声明，方便调参
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── 供应商 Contract Index 权重 ──
 # 解释变量: quality, delivery_window, delivery_reliability, payment_term, trade_unit, free_capacity
 SUPPLIER_WEIGHTS = {
     "quality":              0.04,   # High +0.04, Poor -0.04
@@ -56,13 +60,18 @@ SUPPLIER_WEIGHTS = {
     "trade_unit":          -0.03,   # Tank/IBC 折扣, Pallet 溢价
 }
 
-# 供应商 Baseline
 SUPPLIER_BASELINE = {
     "delivery_reliability": 90.0,
     "payment_term": 6,
 }
 
-# 客户 Contract Index 权重
+SUPPLIER_BASE_INDEX: float = 0.995       # 供应商 CI 基准值
+FREE_CAPACITY_COEFF: float = -0.0005     # 产能系数 (每%偏离基线)
+FREE_CAPACITY_BASELINE: float = 20.0     # 产能基线 (%)
+VMI_SUPPLIER_DELTA: float = -0.005       # VMI 对供应商 CI 的影响
+SUPPLIER_DEV_DELTA: float = -0.010       # 供应商发展项目对 CI 的影响
+
+# ── 客户 Contract Index 权重 ──
 CUSTOMER_WEIGHTS = {
     "service_level":        0.002,  # per % above/below baseline
     "shelf_life":           0.003,  # per % above/below baseline
@@ -77,6 +86,13 @@ CUSTOMER_BASELINE = {
     "shelf_life": 75.0,
     "payment_term": 4,
 }
+
+CUSTOMER_BASE_INDEX: float = 1.000      # 客户 CI 基准值
+VMI_CUSTOMER_DELTA: float = 0.005       # VMI 对客户 CI 的影响
+
+# ── Contract Index 裁剪范围 ──
+CI_CLAMP_MIN: float = 0.85
+CI_CLAMP_MAX: float = 1.20
 
 
 def predict_supplier_contract_index(
@@ -93,7 +109,7 @@ def predict_supplier_contract_index(
     预测供应商 Contract Index。
     基准 0.995, 各参数边际调整。
     """
-    index = 0.995
+    index = SUPPLIER_BASE_INDEX
 
     w = SUPPLIER_WEIGHTS
 
@@ -116,15 +132,15 @@ def predict_supplier_contract_index(
     index += w["trade_unit"] * (tu_val - 0.4) * 2
 
     # Free capacity (tight = supplier has power = higher index)
-    index += -0.0005 * (free_capacity_pct - 20.0)
+    index += FREE_CAPACITY_COEFF * (free_capacity_pct - FREE_CAPACITY_BASELINE)
 
     # Collaboration projects
     if vmi:
-        index -= 0.005  # VMI reduces supplier cost
+        index += VMI_SUPPLIER_DELTA  # VMI reduces supplier cost
     if supplier_development:
-        index -= 0.010  # Supplier dev investment pays off
+        index += SUPPLIER_DEV_DELTA  # Supplier dev investment pays off
 
-    return round(max(0.85, min(1.20, index)), 6)
+    return round(max(CI_CLAMP_MIN, min(CI_CLAMP_MAX, index)), 6)
 
 
 def predict_customer_contract_index(
@@ -140,7 +156,7 @@ def predict_customer_contract_index(
     预测客户 Contract Index。
     基准 1.000, 各参数边际调整。
     """
-    index = 1.000
+    index = CUSTOMER_BASE_INDEX
     w = CUSTOMER_WEIGHTS
 
     # Service level (higher = better for customer = higher price)
@@ -166,9 +182,9 @@ def predict_customer_contract_index(
 
     # VMI (retailer benefits → slightly higher price)
     if vmi:
-        index += 0.005
+        index += VMI_CUSTOMER_DELTA
 
-    return round(max(0.85, min(1.20, index)), 6)
+    return round(max(CI_CLAMP_MIN, min(CI_CLAMP_MAX, index)), 6)
 
 
 # ── 模型校准报告 ──────────────────────────────────────
