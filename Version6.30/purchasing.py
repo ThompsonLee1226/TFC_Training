@@ -75,61 +75,138 @@ SUPPLIER_DECISIONS: Dict[str, dict] = {
 
 # ═══════════════════════════════════════════════════════════════
 # Supplier Contract Index 模型
-# ═══════════════════════════════════════════════════════════════
+# ================================================================
+# 公式来源：对 TFC V9 游戏 API 进行系统性参数扫描，实测破解
+# 测试日期：2026-07-02，团队：Tsinghua University 2026 Pool 2 - Team 1
+# ================================================================
+# 核心公式：
+#   CI = REF_CI + ΔQ(Quality) + ΔPT(PaymentTerm) + ΔR(Reliability)
+#               + ΔD(DeliveryWindow) + ΔV(VMI) + ΔT(TradeUnit)
+# 所有效应为加法性（已通过交叉测试验证无交互作用）
+# ================================================================
 
-# 参数编码：文字选项 → 数值 [0, 1]
-def _encode_quality(q: str) -> float:
-    return {"High": 1.0, "Middle": 0.5, "Poor": 0.0}[q]
 
-def _encode_delivery_window(dw: str) -> float:
-    return {"4 hours": 1.0, "1 day": 0.75, "2 days": 0.5, "1 week": 0.25}[dw]
+# ── 各参数效应函数 ──
 
-def _encode_trade_unit(tu: str) -> float:
-    return {"Tank": 1.0, "IBC": 0.6, "FTL": 0.4, "Pallet": 0.2}[tu]
+def _quality_effect(q: str) -> float:
+    """质量效应：线性递减 -0.0020/级（实测值）"""
+    return {"High": 0.0, "Middle": -0.0020, "Poor": -0.0040}[q]
 
-# 权重（由 5 个供应商已知 CI 值标定）
-SUPPLIER_CI_WEIGHTS = {
-    "quality":              0.04,
-    "delivery_window":      0.06,
-    "delivery_reliability": 0.0008,
-    "payment_term":         0.004,
-    "trade_unit":          -0.03,
+
+def _payment_term_effect(pt_weeks: int) -> float:
+    """付款周期效应：非线性加速增长（实测值，范围 1-8 周）"""
+    table = {
+        1: -0.0072, 2: -0.0066, 3: -0.0058, 4: -0.0048,
+        5: -0.0036, 6: -0.0020, 7:  0.0000, 8: +0.0020,
+    }
+    if pt_weeks in table:
+        return table[pt_weeks]
+    # 外推（近似二次公式）
+    return 0.00013333 * pt_weeks**2 + 0.00010952 * pt_weeks - 0.00739286 + 0.9468 - (
+        0.00013333 * 49 + 0.00010952 * 7 - 0.00739286 + 0.9468
+    )
+
+
+def _reliability_effect(rel_pct: float) -> float:
+    """交货可靠性效应：阶跃 + 递减边际（实测值）"""
+    rel = int(rel_pct)
+    if rel <= 85:
+        return 0.0
+    table = {
+        86: 0.0050, 87: 0.0140, 88: 0.0220, 89: 0.0290,
+        90: 0.0350, 91: 0.0400, 92: 0.0440, 93: 0.0470,
+        94: 0.0490, 95: 0.0500, 96: 0.0510, 97: 0.0530,
+        98: 0.0560, 99: 0.0600,
+    }
+    if rel in table:
+        return table[rel]
+    if rel > 99:
+        return table[99]
+    return 0.0
+
+
+def _delivery_window_effect(dw: str) -> float:
+    """交货窗口效应：非线性（实测值）"""
+    return {"4 hours": +0.0020, "1 day": 0.0,
+            "2 days": -0.0016, "1 week": -0.0040}[dw]
+
+
+def _vmi_effect(vmi: bool) -> float:
+    """VMI 效应：最大负面因素（实测值）"""
+    return -0.0112 if vmi else 0.0
+
+
+def _trade_unit_effect(tu: str) -> float:
+    """贸易单位效应：仅对 Pallet 类产品有效（实测值）"""
+    return {"Pallet": 0.0, "FTL": -0.0030}.get(tu, 0.0)
+
+
+# ── 各供应商参考 CI 值 ──
+# 从 TFC V9 游戏当前回合 (Round 4) 实测获取
+# 参考 CI = 当前参数配置下游戏实际显示的 Contract Index
+SUPPLIER_REFERENCE_CI = {
+    "s_pack":   0.9468,   # Pak,      基线: High/PT=7/Rel=82%/1day/Pallet
+    "s_pet":    1.0102,   # PET,      基线: Middle/PT=5/Rel=93%/1day/Pallet
+    "s_orange": 1.0091,   # Orange,   基线: High/PT=8/Rel=98%/1day/Tank
+    "s_mango":  1.0116,   # Mango,    基线: High/PT=7/Rel=84%/1day/IBC
+    "s_vitc":   1.0518,   # VitaminC, 基线: High/PT=6/Rel=98%/4hours/IBC
 }
-SUPPLIER_CI_BASELINE = {"delivery_reliability": 90.0, "payment_term": 6}
+
+# 各供应商参考参数配置（用于计算效应增量）
+SUPPLIER_REFERENCE_PARAMS = {
+    "s_pack":   {"quality": "High", "payment_term_weeks": 7,
+                 "delivery_reliability_pct": 82.0, "delivery_window": "1 day",
+                 "vmi": False, "trade_unit": "Pallet"},
+    "s_pet":    {"quality": "Middle", "payment_term_weeks": 5,
+                 "delivery_reliability_pct": 93.0, "delivery_window": "1 day",
+                 "vmi": False, "trade_unit": "Pallet"},
+    "s_orange": {"quality": "High", "payment_term_weeks": 8,
+                 "delivery_reliability_pct": 98.0, "delivery_window": "1 day",
+                 "vmi": False, "trade_unit": "Tank"},
+    "s_mango":  {"quality": "High", "payment_term_weeks": 7,
+                 "delivery_reliability_pct": 84.0, "delivery_window": "1 day",
+                 "vmi": False, "trade_unit": "IBC"},
+    "s_vitc":   {"quality": "High", "payment_term_weeks": 6,
+                 "delivery_reliability_pct": 98.0, "delivery_window": "4 hours",
+                 "vmi": False, "trade_unit": "IBC"},
+}
 
 
 def predict_supplier_ci(supplier_id: str) -> float:
-    """根据 SUPPLIER_DECISIONS 中的参数预测供应商 Contract Index"""
+    """根据 SUPPLIER_DECISIONS 中的参数预测供应商 Contract Index
+
+    公式: CI = REF_CI + Σ ΔEffect
+    其中 ΔEffect = Effect(new_param) - Effect(ref_param)
+    参考 CI 为游戏当前回合实测值
+    """
     d = SUPPLIER_DECISIONS.get(supplier_id)
     if not d:
         return 1.0
 
-    w = SUPPLIER_CI_WEIGHTS
-    index = 0.995
+    ref = SUPPLIER_REFERENCE_PARAMS.get(supplier_id)
+    ref_ci = SUPPLIER_REFERENCE_CI.get(supplier_id, 0.9468)
 
-    q = _encode_quality(d["quality"])
-    index += w["quality"] * (q - 0.5) * 2
+    if not ref:
+        return ref_ci
 
-    dw = _encode_delivery_window(d["delivery_window"])
-    index += w["delivery_window"] * (dw - 0.75) * 4
+    # 计算各参数效应增量
+    ci = ref_ci
+    ci += _quality_effect(d["quality"]) - _quality_effect(ref["quality"])
+    ci += _payment_term_effect(d["payment_term_weeks"]) - _payment_term_effect(ref["payment_term_weeks"])
+    ci += _reliability_effect(d["delivery_reliability_pct"]) - _reliability_effect(ref["delivery_reliability_pct"])
+    ci += _delivery_window_effect(d["delivery_window"]) - _delivery_window_effect(ref["delivery_window"])
+    ci += _vmi_effect(d.get("vmi", False)) - _vmi_effect(ref.get("vmi", False))
 
-    index += w["delivery_reliability"] * (d["delivery_reliability_pct"] - SUPPLIER_CI_BASELINE["delivery_reliability"])
-    index += w["payment_term"] * (d["payment_term_weeks"] - SUPPLIER_CI_BASELINE["payment_term"])
+    # 贸易单位：仅当新产品选项不同于参考时才应用
+    new_tu = d.get("trade_unit", "")
+    ref_tu = ref.get("trade_unit", "")
+    if new_tu != ref_tu:
+        ci += _trade_unit_effect(new_tu) - _trade_unit_effect(ref_tu)
 
-    tu = _encode_trade_unit(d["trade_unit"])
-    index += w["trade_unit"] * (tu - 0.4) * 2
+    # Supplier Development 实测无影响，省略也不添加
+    # 注意：游戏实际 CI 不含产能调整
 
-    # 产能紧张度（来自实体数据）
-    s = SUPPLIER_MAP.get(supplier_id)
-    if s:
-        index += -0.0005 * (s.free_capacity_pct - 20.0)
-
-    if d.get("vmi"):
-        index -= 0.005
-    if d.get("supplier_development"):
-        index -= 0.010
-
-    return round(max(0.85, min(1.20, index)), 6)
+    return round(max(0.85, min(1.20, ci)), 6)
 
 
 def get_effective_purchase_price(supplier_id: str) -> float:
