@@ -45,24 +45,5 @@ htmlcov/
 # test file
 Version6.30\test.py
 
-# ── TFC CI 数据采集工作文件 ──
-# Playwright 自动化采集脚本
-explore_tfc.py
-debug_form.py
-collect_ci_data.py
-explore_other_customers.py
-collect_all_customers.py
-
-# 数据分析与校准脚本
-analyze_ci.py
-analyze_ci_v2.py
-derive_formula.py
-calibrate_all.py
-
-# 实验采集数据
-Sales CI.csv
-Sales CI - LAND Market.csv
-Sales CI - Dominick's.csv
-
-# 浏览器截图
-debug_*.png
+# CI 研究工作文件（Playwright采集脚本、分析代码、实验数据、截图）
+ci_research/
