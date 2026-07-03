@@ -49,7 +49,6 @@ def run() -> SimulationResult:
       5. Finance   → P&L + Investment + ROI
     """
     sc_cfg = supplychain.SUPPLY_CHAIN_CONFIG
-    ops_cfg = operations.OPERATIONS_CONFIG
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 1. SALES — 销售收入
@@ -71,12 +70,7 @@ def run() -> SimulationResult:
 
     for week in range(1, WEEKS_PER_ROUND + 1):
         plan = prod_sim.make_plan(week, product_weekly_demand)
-        result = prod_sim.simulate_week(
-            week, plan,
-            shifts_per_week=ops_cfg["production_shifts_per_week"],
-            has_smed=ops_cfg["smed_training"],
-            has_breakdown_training=ops_cfg["solve_breakdowns_training"],
-        )
+        result = prod_sim.simulate_week(week, plan)
         total_production_cost += result.total_production_cost
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -225,7 +219,9 @@ def run() -> SimulationResult:
     admin = BASELINE["admin_cost"]
 
     project = BASELINE["project_cost"]
-    if ops_cfg["smed_training"]:
+    if operations._cfg("bottling.smed_action", False):
+        project += 6000
+    if operations._cfg("bottling.general_settings.solve_breakdowns_training", "No") == "Yes":
         project += 6000
 
     interest_ar_ap = BASELINE["interest_ar_ap"]
