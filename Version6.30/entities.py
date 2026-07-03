@@ -128,26 +128,41 @@ class Component:
 
 
 @dataclass
+class MixerSpec:
+    """混合器规格（来自游戏 Mixing 页面的 tooltip 数据）"""
+    id: str
+    name: str
+    batch_min_liters: int        # 技术最小批量
+    batch_max_liters: int        # 最大批量
+    run_time_hours: float        # 每批次运行时间
+    clean_time_hours: float      # 口味切换清洗时间
+    cost_per_hour: float         # €/混合小时
+    fixed_cost_annual: float     # €/年 (折旧+维护)
+    investment: float            # € 设备购置投资
+
+
+@dataclass
+class BottlingLineSpec:
+    """灌装线规格（来自游戏 Bottling 页面的 tooltip 数据）"""
+    id: str
+    name: str
+    capacity_liters_per_hour: int  # 每小时灌装升数
+    num_operators: int             # 操作员数量
+    operator_cost_annual: float    # 操作员年薪 €
+    flexible_labor_per_hour: float # 灵活工时成本 €/h
+    fixed_cost_annual: float       # €/年 (折旧+维护)
+    investment: float              # € 设备购置投资
+    formula_changeover_hours: float  # 配方换型时间
+    size_changeover_hours: float     # 尺寸换型时间
+    tolerances: str                  # 包装材料公差: Narrow/Middle/Wide
+    startup_productivity_loss_pct: float  # 启动产能损失 %
+
+
+@dataclass
 class FacilityConfig:
-    """生产设施配置"""
-    # Mixer
-    mixer_min_batch_liters: int = 5000
-    mixer_max_batch_liters: int = 30000
-    mixer_run_time_hours: float = 2.0      # 每批次运行时间
-    mixer_clean_time_hours: float = 1.0     # 口味切换清洗时间
-    mixer_variable_cost_per_hour: float = 150.0  # €/小时
-    mixer_fixed_cost_annual: float = 62500.0     # €/年 (折旧+维护)
-    # Bottling lines (2条)
-    num_bottling_lines: int = 2
-    bottling_liters_per_hour: int = 5000
-    bottling_changeover_hours: float = 0.5
-    bottling_breakdown_rate_pct: float = 3.0     # 故障率 %
-    bottling_fixed_cost_annual: float = 98000.0  # €/年 (折旧+维护, 2条线)
-    # Shifts
-    shifts_per_week: int = 5
+    """生产设施运行时参数（非规格，为通用配置）"""
     hours_per_shift: int = 8
-    # Labor
-    permanent_production_fte: int = 10
+    # 生产劳动力基准
     labor_cost_per_fte_annual: float = 40000.0  # €/年/人
 
 
@@ -303,7 +318,70 @@ BOM: Dict[str, Dict[str, float]] = {
     "p_om_pet":    {"pet": 1.0, "orange": 0.045, "mango": 0.015},
 }
 
-# ── 设施配置 ──
+# ── 混合器规格（从游戏 Mixing 页面 tooltip 提取）──
+
+MIXER_SPECS = {
+    "Fruitmix MQ": MixerSpec(
+        id="mixer_fruitmix", name="Fruitmix MQ",
+        batch_min_liters=8000, batch_max_liters=12000,
+        run_time_hours=2.0, clean_time_hours=2.0,
+        cost_per_hour=135.0, fixed_cost_annual=62500.0,
+        investment=312500.0,
+    ),
+    "MegaChurn 20": MixerSpec(
+        id="mixer_megachurn", name="MegaChurn 20",
+        batch_min_liters=15000, batch_max_liters=20000,
+        run_time_hours=2.0, clean_time_hours=3.0,
+        cost_per_hour=160.0, fixed_cost_annual=75000.0,
+        investment=375000.0,
+    ),
+    "FMM 4000": MixerSpec(
+        id="mixer_fmm4000", name="FMM 4000",
+        batch_min_liters=3000, batch_max_liters=6000,
+        run_time_hours=2.0, clean_time_hours=1.0,
+        cost_per_hour=100.0, fixed_cost_annual=50000.0,
+        investment=250000.0,
+    ),
+}
+
+# ── 灌装线规格（从游戏 Bottling 页面 tooltip 提取）──
+
+BOTTLING_LINE_SPECS = {
+    "Swiss Fill 2": BottlingLineSpec(
+        id="line_swissfill2", name="Swiss Fill 2",
+        capacity_liters_per_hour=3100, num_operators=5,
+        operator_cost_annual=40000.0, flexible_labor_per_hour=42.0,
+        fixed_cost_annual=98000.0, investment=490000.0,
+        formula_changeover_hours=2.0, size_changeover_hours=4.0,
+        tolerances="Middle", startup_productivity_loss_pct=10.0,
+    ),
+    "TopSpeed 1": BottlingLineSpec(
+        id="line_topspeed1", name="TopSpeed 1",
+        capacity_liters_per_hour=3250, num_operators=4,
+        operator_cost_annual=40000.0, flexible_labor_per_hour=42.0,
+        fixed_cost_annual=114000.0, investment=570000.0,
+        formula_changeover_hours=4.0, size_changeover_hours=6.0,
+        tolerances="Narrow", startup_productivity_loss_pct=15.0,
+    ),
+    "MultiFlex 1": BottlingLineSpec(
+        id="line_multiflex1", name="MultiFlex 1",
+        capacity_liters_per_hour=2950, num_operators=6,
+        operator_cost_annual=40000.0, flexible_labor_per_hour=42.0,
+        fixed_cost_annual=85000.0, investment=425000.0,
+        formula_changeover_hours=1.0, size_changeover_hours=2.0,
+        tolerances="Wide", startup_productivity_loss_pct=8.0,
+    ),
+    "Swiss Fill 1": BottlingLineSpec(
+        id="line_swissfill1", name="Swiss Fill 1",
+        capacity_liters_per_hour=3100, num_operators=5,
+        operator_cost_annual=40000.0, flexible_labor_per_hour=42.0,
+        fixed_cost_annual=98000.0, investment=490000.0,
+        formula_changeover_hours=2.0, size_changeover_hours=4.0,
+        tolerances="Middle", startup_productivity_loss_pct=10.0,
+    ),
+}
+
+# ── 设施通用配置 ──
 
 FACILITY = FacilityConfig()
 WAREHOUSE = WarehouseConfig()
