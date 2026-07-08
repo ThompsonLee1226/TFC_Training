@@ -180,11 +180,14 @@ class WarehouseConfig:
     chilled_finished_goods_pallet_locations: int = 200
     # 罐区
     tank_yard_liters: int = 60000
+    tank_yard_cost_per_day_per_tank: float = 25.0   # €/天/tank (外包)
+    tank_yard_intake_cost_per_delivery: float = 10.0  # €/次 入库处理费 (operations_info.txt:21)
+    tank_yard_delivery_cost_per_trip: float = 100.0   # €/次 运输到TFC (operations_info.txt:22)
     # 空间成本
     pallet_location_cost_annual: float = 200.0    # €/年/位
-    tank_yard_cost_per_day_per_tank: float = 25.0  # €/天/tank (外包)
     # 溢出仓库成本
-    overflow_pallet_cost_annual: float = 500.0    # €/年/位 (比正常贵)
+    overflow_pallet_cost_per_day: float = 3.0       # €/天/托盘 (operations_info.txt:13)
+    overflow_pallet_cost_annual: float = 1095.0     # €/年/位 (= €3/day × 365)
     # 劳动力成本
     perm_employee_cost_annual: float = 40000.0    # €/年/人
     temp_employee_cost_annual: float = 60000.0    # €/年/人 (临时工更贵)

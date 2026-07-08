@@ -14,16 +14,16 @@ WEEKS_PER_ROUND = 26
 USE_NOISE = False
 
 # ═══════════════════════════════════════════════════════════════
-# 成本标定因子（调至 Round 3 BASELINE）
-# 因为游戏引擎内部黑盒不可完全复制，以下因子用于对齐已知财务数据。
-# 设 1.0 = 使用模型原始计算结果；调大/调小来匹配实际游戏数据。
+# 成本标定因子
+# 设为 1.0，使用模型原始计算结果。
+# 如需要对齐特定 Round 的游戏数据，可临时调整以下因子。
 # ═══════════════════════════════════════════════════════════════
-PURCHASE_COST_FACTOR = 1.37      # 采购成本放大（含隐含运费/损耗等）
-STOCK_SPACE_FACTOR = 8.9         # 库存空间成本放大（游戏实际库存水平更高）
-STOCK_INTEREST_FACTOR = 3.8      # 库存资金利息放大
-STOCK_RISK_BASELINE = 13_266     # 库存风险固定值（报废/损耗，模型难精准计算）
-DISTRIBUTION_COST_FACTOR = 0.72  # 配送成本缩放
-INVENTORY_VALUE_FACTOR = 3.8     # 投资项中库存价值放大
+PURCHASE_COST_FACTOR = 1.0       # 采购成本缩放
+STOCK_SPACE_FACTOR = 1.0         # 库存空间成本缩放
+STOCK_INTEREST_FACTOR = 1.0      # 库存资金利息缩放
+STOCK_RISK_BASELINE = 0          # 库存风险固定值（现由 expire_all() 动态计算）
+DISTRIBUTION_COST_FACTOR = 1.0   # 配送成本缩放
+INVENTORY_VALUE_FACTOR = 1.0     # 投资项中库存价值缩放
 
 # ═══════════════════════════════════════════════════════════════
 # 噪声参数（仅 USE_NOISE=True 时生效）

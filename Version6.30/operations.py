@@ -230,6 +230,8 @@ class ProductionResult:
     permanent_labor_cost: float = 0.0
     labor_cost: float = 0.0
     total_production_cost: float = 0.0
+    outsourced_liters: float = 0.0
+    outsourced_cost: float = 0.0
     daily_results: List[DailyResult] = field(default_factory=list)
     weekend_overtime_days: int = 0
 
@@ -259,9 +261,18 @@ class ProductionSimulator:
     # ── 工具方法 ──────────────────────────────────────────
 
     def _daily_available_hours(self) -> float:
-        """每天可用生产小时数（Mon-Fri）"""
+        """每天可用生产小时数（Mon-Fri），扣除预防维护时间。
+
+        预防维护 (per operations_info.txt:116-118):
+          Minimal/A little: 1h/week → 减少30%故障
+          Extensive/A lot:   3h/week → 减少50%故障
+        """
         shifts = _cfg("bottling.shifts_per_week", 2)
-        return shifts * FACILITY.hours_per_shift
+        base = shifts * FACILITY.hours_per_shift
+        pm = _cfg("bottling.general_settings.preventive_maintenance", "A little")
+        maint_hours_per_week = {"None": 0.0, "A little": 1.0, "A lot": 3.0}.get(pm, 1.0)
+        base -= maint_hours_per_week / self.DAYS_PER_WEEK
+        return max(0.0, base)
 
     @staticmethod
     def _extract_flavor(pid: str) -> str:
@@ -292,19 +303,19 @@ class ProductionSimulator:
     def _check_breakdown(self) -> float:
         """离散故障模型：返回当天故障停机小时数，0 表示无故障。
 
-        每天独立概率判断，而非按周总时间比例平滑。
-        预防性维护降低故障概率；故障排除培训再乘 0.7。
+        每天独立概率判断。
+        基准故障概率 (None): 30%/天
+        预防维护: A little → -30%故障, A lot → -50%故障 (per operations_info.txt:116-118)
+        故障排除培训: -40%故障持续时间 (per operations_info.txt:123)
         """
         pm = _cfg("bottling.general_settings.preventive_maintenance", "A little")
-        daily_prob = {
-            "None": 0.30,       # 30% 概率当天发生故障
-            "A little": 0.20,   # 20%
-            "A lot": 0.10,      # 10%
-        }.get(pm, 0.20)
+        baseline_prob = 0.30
+        reduction = {"None": 0.0, "A little": 0.30, "A lot": 0.50}.get(pm, 0.30)
+        daily_prob = baseline_prob * (1.0 - reduction)
 
         training = _cfg("bottling.general_settings.solve_breakdowns_training", "No")
         if training == "Yes":
-            daily_prob *= 0.7
+            daily_prob *= 0.6  # -40% per doc
 
         if self.rng.random() < daily_prob:
             return round(self.rng.uniform(1.0, 4.0), 2)  # 停机 1-4 小时
@@ -347,9 +358,9 @@ class ProductionSimulator:
         for i in range(1, len(pids)):
             changeover += self._classify_changeover(pids[i - 1], pids[i], line_spec)
 
-        # SMED action → -50%
+        # SMED action → -30% (per operations_info.txt: "reduces changeover times by 30%")
         if _cfg("bottling.smed_action", False):
-            changeover *= 0.5
+            changeover *= 0.7
 
         result.changeover_hours = changeover
 
@@ -757,6 +768,17 @@ class ProductionSimulator:
         # ── 4b) 最终产能缺口 ──
         result.shortfall_liters = max(0.0, result.planned_liters - result.actual_liters)
 
+        # ── 4c) 外包生产（短fall超出OT上限时）──
+        # per operations_info.txt:106: "outsourcing is 2× as expensive"
+        if result.shortfall_liters > 0.1:
+            result.outsourced_liters = result.shortfall_liters
+            # 外包成本 = 2× 单位变动成本 (混合+灌装)
+            unit_mix_var = mixer_spec.cost_per_hour / line_spec.capacity_liters_per_hour
+            unit_bottle_var = line_spec.flexible_labor_per_hour / line_spec.capacity_liters_per_hour
+            result.outsourced_cost = result.outsourced_liters * (unit_mix_var + unit_bottle_var) * 2.0
+            # 外包产量不计入 actual_liters（非内部生产），但满足需求
+            result.shortfall_liters = 0.0
+
         # ── 5) 启动产能损失 ──
         result.startup_loss_liters = (
             result.actual_liters * (line_spec.startup_productivity_loss_pct / 100.0)
@@ -780,6 +802,7 @@ class ProductionSimulator:
         result.total_production_cost = (
             result.mixing_cost + result.bottling_fixed_cost
             + result.bottling_variable_cost + result.permanent_labor_cost
+            + result.outsourced_cost
         )
         return result
 
@@ -824,22 +847,70 @@ def calculate_inspection_cost() -> float:
     return count * 5000.0 * 0.5  # EUR 5k/year/supplier, half year
 
 
-def calculate_warehouse_cost_raw_materials() -> float:
-    """Inbound tab — 原料仓库成本（26 周）。
-    网页位置：Operations → inbound → Raw materials warehouse
+def calculate_project_costs() -> dict:
+    """汇总所有运营改进项目的成本（26周）。
+
+    包含:
+      - SMED action: €20,000/year
+      - Breakdown training: €400/employee (所有操作员)
+      - Speed optimization: €30,000/year
+      - PET inflate module: €140,000/year
+      - MCC: €10,000/year
+
+    Returns:
+        {"total": float, "details": {str: float}, "investment_delta": float}
+        investment_delta 是设备投资的变动（PET inflate: +€700,000）
     """
-    wh = _cfg("inbound.raw_materials_warehouse", {})
-    pallets = wh.get("pallet_locations", 1000)
-    employees = wh.get("permanent_employees", 5)
-    from entities import WAREHOUSE
-    space_cost = pallets * WAREHOUSE.pallet_location_cost_annual * 0.5  # half year
-    labor_cost = employees * WAREHOUSE.perm_employee_cost_annual * 0.5
-    return space_cost + labor_cost
+    half = 0.5  # 26 weeks = 0.5 year
+    details = {}
+    investment_delta = 0.0
+
+    # SMED: €20,000/year
+    if _cfg("bottling.smed_action", False):
+        details["smed"] = 20000.0 * half
+
+    # Speed optimization: €30,000/year
+    if _cfg("bottling.increase_speed", False):
+        details["speed_optimization"] = 30000.0 * half
+
+    # PET inflate: €140,000/year + €700,000 investment
+    if _cfg("bottling.general_settings.inflate_pet_bottles", False):
+        details["pet_inflate"] = 140000.0 * half
+        investment_delta += 700000.0
+
+    # Breakdown training: €400 × 操作员总数
+    training = _cfg("bottling.general_settings.solve_breakdowns_training", "No")
+    if training == "Yes":
+        line_spec = get_bottling_line_spec()
+        # 操作员 = 灌装线操作员 + 额外生产人员
+        total_operators = line_spec.num_operators + ProductionSimulator.ADDITIONAL_PRODUCTION_STAFF
+        details["breakdown_training"] = 400.0 * total_operators
+
+    # MCC: €10,000/year
+    outsource = _cfg("outbound.finished_goods_warehouse.outsource_type", "None")
+    if outsource == "MCC":
+        details["mcc"] = 10000.0 * half
+
+    total = sum(details.values())
+    return {"total": total, "details": details, "investment_delta": investment_delta}
 
 
-def calculate_warehouse_cost_finished_goods() -> float:
+def calculate_warehouse_cost_finished_goods(avg_daily_pallets: float = 0,
+                                             num_outbound_order_lines: int = 0,
+                                             num_obsolete_batches: int = 0) -> float:
     """Outbound tab — 成品仓库成本（26 周）。
+
     网页位置：Operations → outbound → Finished goods warehouse
+
+    自营仓库:
+      - 托盘位: €200/年/位
+      - 永久员工: €40,000/年/人
+      - 溢出仓库: €3/托盘/天 (per operations_info.txt)
+
+    外包仓库 (per operations_info.txt):
+      Conventional:  €1.30/pallet/day + €1.25/pallet intake + €3.00/order line dispatch
+      Automated:     €1.50/pallet/day + €1.00/pallet intake + €2.50/order line dispatch
+      MCC:           €10,000/year + 自动化费率 (storage cost follows automated model)
     """
     fg = _cfg("outbound.finished_goods_warehouse", {})
     pallets = fg.get("pallet_locations", 1400)
@@ -847,18 +918,41 @@ def calculate_warehouse_cost_finished_goods() -> float:
     outsource = fg.get("outsource_type", "None")
     from entities import WAREHOUSE
 
-    if outsource == "Conventional":
-        # 外包仓库成本不同
-        space_cost = pallets * WAREHOUSE.overflow_pallet_cost_annual * 0.5
-    elif outsource == "Automated":
-        space_cost = pallets * WAREHOUSE.overflow_pallet_cost_annual * 0.5 * 1.3
-    elif outsource == "MCC":
-        # MCC: 与合作方共享仓库
-        space_cost = pallets * WAREHOUSE.pallet_location_cost_annual * 0.5 * 0.6
-    else:
-        space_cost = pallets * WAREHOUSE.pallet_location_cost_annual * 0.5
+    half_year_days = 26 * 5  # 130 working days in half year (5-day week × 26 weeks)
 
-    labor_cost = employees * WAREHOUSE.perm_employee_cost_annual * 0.5
+    if outsource == "Conventional":
+        # per operations_info.txt: €1.30/pallet/day, €1.25/pallet intake, €3.00/order line dispatch
+        storage = avg_daily_pallets * 1.30 * half_year_days
+        intake = avg_daily_pallets * 1.25  # daily intake ≈ avg daily throughput
+        dispatch = num_outbound_order_lines * 3.00
+        space_cost = storage + intake + dispatch
+        labor_cost = 0.0  # 外包无自有员工
+    elif outsource == "Automated":
+        # per operations_info.txt: €1.50/pallet/day, €1.00/pallet intake, €2.50/order line dispatch
+        storage = avg_daily_pallets * 1.50 * half_year_days
+        intake = avg_daily_pallets * 1.00
+        dispatch = num_outbound_order_lines * 2.50
+        space_cost = storage + intake + dispatch
+        labor_cost = 0.0
+    elif outsource == "MCC":
+        # per operations_info.txt: €10,000/year + automated warehouse rates
+        storage = avg_daily_pallets * 1.50 * half_year_days
+        intake = avg_daily_pallets * 1.00
+        dispatch = num_outbound_order_lines * 2.50
+        space_cost = storage + intake + dispatch
+        labor_cost = 0.0
+        # MCC年费已在 calculate_project_costs 中计入
+    else:
+        # 自营仓库
+        space_cost = pallets * WAREHOUSE.pallet_location_cost_annual * 0.5
+        # 溢出仓库: €3/pallet/day (per operations_info.txt:13)
+        # 由调用方传入或在此估算
+        labor_cost = employees * WAREHOUSE.perm_employee_cost_annual * 0.5
+
+    # 报废品处理: €2.50/batch (仅外包仓库, per operations_info.txt:166)
+    if outsource != "None":
+        space_cost += num_obsolete_batches * 2.50
+
     return space_cost + labor_cost
 
 

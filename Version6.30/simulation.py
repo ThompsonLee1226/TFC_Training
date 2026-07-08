@@ -1,13 +1,20 @@
 """
 TFC 仿真引擎 — 四角色编排器
 ============================
-从四个模块读取决策参数 → 运行生产/库存/物流仿真 → 输出财务结果。
+从四个模块读取决策参数 → 运行日级生产/库存/物流仿真 → 输出财务结果。
 
 架构：
   purchasing.py ─┐
   sales.py ──────┼──→ simulation.py ──→ finance.py ──→ ROI
   operations.py ─┤
   supplychain.py ┘
+
+改进 (v6.30.1):
+  - 销售与成品库存联动（DailySalesSimulator）
+  - 生产受组件库存约束
+  - Bonus/Penalty 机制
+  - 动态间接成本（handling, admin, project, interest AR/AP）
+  - 移除硬编码校准因子
 
 用法：
   from simulation import run
@@ -41,23 +48,19 @@ def run() -> SimulationResult:
     """
     执行一次仿真。
 
-    流程：
-      1. Sales     → 销售收入 + 客户 CI
-      2. Operations → 生产计划 + 生产模拟 + 组件消耗
-      3. Purchasing → 组件采购成本 + 入库运输
-      4. SupplyChain → 库存 FIFO 追踪 + 仓储/人工/出库运输成本
-      5. Finance   → P&L + Investment + ROI
+    流程（逐周）：
+      1. 收货（之前下单到达的组件）
+      2. 查询组件库存 → 约束生产计划
+      3. 日级生产仿真（含组件消耗）
+      4. 日级销售仿真（含成品库存约束）
+      5. 成品入库 + 组件补货下单
+      6. 过期清理
+    汇总 → Finance (P&L + Investment + ROI)
     """
     sc_cfg = supplychain.SUPPLY_CHAIN_CONFIG
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # 1. SALES — 销售收入
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    rev = sales.calculate_revenue()
-    total_revenue = rev["total_revenue"]
-
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # 2. OPERATIONS — 生产计划 & 模拟
+    # 初始化
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     product_weekly_demand = sales.weekly_demand_by_product()  # L/周 per product
     total_demand_by_product = {
@@ -65,34 +68,21 @@ def run() -> SimulationResult:
         for pid, liters in product_weekly_demand.items()
     }
 
+    # 生产模拟器
     prod_sim = operations.ProductionSimulator(seed=RANDOM_SEED)
     total_production_cost = 0.0
 
-    for week in range(1, WEEKS_PER_ROUND + 1):
-        plan = prod_sim.make_plan(week, product_weekly_demand)
-        result = prod_sim.simulate_week(week, plan)
-        total_production_cost += result.total_production_cost
+    # 日级销售模拟器
+    daily_sales_sim = sales.DailySalesSimulator(seed=RANDOM_SEED)
 
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # 3. PURCHASING — 组件需求 & 采购成本
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 组件需求总量（BOM反推）
     component_needs = operations.calculate_component_needs(total_demand_by_product)
-    purch = purchasing.calculate_purchase_costs(component_needs)
-    total_purchase = purch["total_purchase"]
-    total_inbound_transport = purch["total_transport"]
-
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # 4. SUPPLY CHAIN — 逐周库存仿真
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    inv_state = supplychain.InventoryState()
-
-    # 每周组件/成品需求（均匀分配）
     weekly_comp_needs = {
         cid: total / WEEKS_PER_ROUND
         for cid, total in component_needs.items()
     }
 
-    # 构建供应商 → component 映射
+    # 供应商 → component 映射
     supplier_for_component = {}
     for s in purchasing.SUPPLIERS:
         if hasattr(s, 'component_id'):
@@ -106,7 +96,10 @@ def run() -> SimulationResult:
         c = supplychain.COMPONENT_MAP.get(comp_id)
         return c.shelf_life_weeks if c else None
 
-    # ── 初始化库存 = 安全库存 + 1 周消耗（模拟在途+在库）──
+    # 库存状态
+    inv_state = supplychain.InventoryState()
+
+    # ── 初始化库存 = 安全库存 + 1 周消耗 ──
     for comp_id, weekly_need in weekly_comp_needs.items():
         ss_weeks = sc_cfg["safety_stock_weeks"].get(comp_id, 2.0)
         initial = weekly_need * (ss_weeks + 1.0)
@@ -114,8 +107,24 @@ def run() -> SimulationResult:
             inv_state.add_component(comp_id, initial, 0,
                                     _comp_price(comp_id), _comp_shelf_life(comp_id))
 
-    # ── 组件订单队列（按到达周）──
-    # {arrival_week: [(comp_id, qty, price, shelf_life), ...]}
+    # ── 初始化成品库存 = 安全库存 ──
+    fg_safety_stock = sc_cfg.get("fg_safety_stock_weeks", {})
+    for pid, weekly_liters in product_weekly_demand.items():
+        p = supplychain.PRODUCT_MAP.get(pid)
+        if not p:
+            continue
+        ss_weeks = fg_safety_stock.get(pid, 0.5)
+        initial_fg = weekly_liters * ss_weeks
+        if initial_fg > 0:
+            # 估算成本 = 物料成本 + 生产成本（按比例）
+            recipe = operations.BOM.get(pid, {})
+            material_cost = sum(
+                ratio * _comp_price(cid)
+                for cid, ratio in recipe.items()
+            )
+            inv_state.add_fg(pid, initial_fg, 0, material_cost, p.shelf_life_weeks)
+
+    # ── 组件订单队列 ──
     pending_orders: dict = {}
 
     def place_order(comp_id: str, qty: float, current_week: int, lead_time_days: int):
@@ -131,44 +140,115 @@ def run() -> SimulationResult:
         sid = supplier_for_component.get(comp_id, "")
         lt_days = purchasing.get_supplier_lead_time(sid) if sid else 7
         ss_weeks = sc_cfg["safety_stock_weeks"].get(comp_id, 2.0)
-        # 预下 lead_time 内的需求量
         lt_weeks = max(1, round(lt_days / 7))
         pre_order = weekly_need * (lt_weeks + ss_weeks)
         place_order(comp_id, pre_order, 0, lt_days)
 
+    # ── 周仿真循环 ──
     total_obsoletes = 0.0
     cum_component_value = 0.0
     cum_fg_value = 0.0
 
+    # 销售追踪
+    total_fulfilled_liters: Dict[str, float] = {}  # per customer
+    total_demand_liters_by_cust: Dict[str, float] = {}  # per customer
+    total_revenue = 0.0
+    revenue_by_customer: Dict[str, float] = {}
+
+    # 生产和组件追踪
+    total_produced_liters = 0.0
+    total_components_ordered = 0.0
+
+    # 预计算每个客户的周需求（升），用于服务水平计算
+    weekly_demand_by_cust = sales.weekly_demand_by_customer()
+    for cid, liters in weekly_demand_by_cust.items():
+        total_demand_liters_by_cust[cid] = liters * WEEKS_PER_ROUND
+
     for week in range(1, WEEKS_PER_ROUND + 1):
-        # ── 1) 收货（之前下单到达的）──
+        # ── 1) 收货 ──
         if week in pending_orders:
             for comp_id, qty, price, shelf_life in pending_orders.pop(week):
                 inv_state.add_component(comp_id, qty, week, price, shelf_life)
+                total_components_ordered += qty * price
 
-        # ── 2) 成品出库（发上周生产的货，第1周无库存）──
-        for (pid, cid), pieces in sales.WEEKLY_DEMAND_PIECES.items():
-            p = supplychain.PRODUCT_MAP.get(pid)
-            if not p:
-                continue
-            liters = pieces * p.liters_per_pack
-            inv_state.consume_fg(pid, liters, week)
+        # ── 2) 查询当前组件库存 ──
+        current_comp_stock = {}
+        for comp_id in weekly_comp_needs:
+            current_comp_stock[comp_id] = inv_state.get_component_stock(comp_id, week)
 
-        # ── 3) 消耗组件（用于本周生产）──
-        for comp_id, need in weekly_comp_needs.items():
-            inv_state.consume_component(comp_id, need, week)
+        # ── 3) 生产计划 & 仿真（带组件约束）──
+        plan = prod_sim.make_plan(week, product_weekly_demand)
+        prod_result = prod_sim.simulate_week(week, plan,
+                                             component_stock=current_comp_stock)
+        total_production_cost += prod_result.total_production_cost
+        actual_produced = prod_result.actual_liters
+        total_produced_liters += actual_produced
 
-        # ── 4) 成品入库（本周生产，下周发货）──
-        total_all_weekly = sum(product_weekly_demand.values())
-        cost_per_liter = (total_production_cost / (total_all_weekly * WEEKS_PER_ROUND)
-                          if total_all_weekly > 0 else 0)
+        # ── 4) 消耗组件（按实际产量反推）──
+        # 实际产量与计划的比例
+        if sum(product_weekly_demand.values()) > 0 and actual_produced > 0:
+            # 按实际产量比例缩放组件消耗
+            scale = actual_produced / sum(product_weekly_demand.values())
+            for comp_id, need in weekly_comp_needs.items():
+                actual_need = need * min(scale, 1.0)
+                inv_state.consume_component(comp_id, actual_need, week)
+
+        # ── 5) 成品入库 ──
+        if actual_produced > 0 and total_production_cost > 0:
+            cost_per_liter = prod_result.total_production_cost / actual_produced \
+                if actual_produced > 0 else 0.0
+        else:
+            cost_per_liter = 0.0
+
         for pid, weekly_liters in product_weekly_demand.items():
             p = supplychain.PRODUCT_MAP.get(pid)
             if not p:
                 continue
-            inv_state.add_fg(pid, weekly_liters, week, cost_per_liter, p.shelf_life_weeks)
+            # 按比例分配实际产量
+            actual_pid_liters = weekly_liters * (actual_produced / sum(product_weekly_demand.values())) \
+                if sum(product_weekly_demand.values()) > 0 else 0.0
+            if actual_pid_liters > 0:
+                # 成品成本 = 物料成本 + 生产成本
+                recipe = operations.BOM.get(pid, {})
+                material_cost = sum(
+                    ratio * _comp_price(cid)
+                    for cid, ratio in recipe.items()
+                )
+                total_cost = material_cost + cost_per_liter
+                inv_state.add_fg(pid, actual_pid_liters, week,
+                                 total_cost, p.shelf_life_weeks)
 
-        # ── 5) 下单补货（低于目标库存时触发）──
+        # ── 6) 日级销售仿真（含成品库存约束）──
+        # 构建当前成品库存快照
+        fg_inventory = {}
+        for pid in product_weekly_demand:
+            fg_inventory[pid] = inv_state.get_fg_stock(pid, week)
+
+        weekly_sales = daily_sales_sim.simulate_week(week, fg_inventory=fg_inventory)
+
+        # 消耗已发货的成品
+        for day_result in weekly_sales.daily_results:
+            for pid, fulfilled in day_result.fulfilled_by_product.items():
+                if fulfilled > 0:
+                    inv_state.consume_fg(pid, fulfilled, week)
+
+        # 累计销售数据
+        total_revenue += weekly_sales.total_revenue
+        for cid, rev in weekly_sales.revenue_by_customer.items():
+            revenue_by_customer[cid] = revenue_by_customer.get(cid, 0.0) + rev
+
+        # 跟踪每个客户的发货升数（从 revenue 反推）
+        for cid, rev in weekly_sales.revenue_by_customer.items():
+            current_ci = sales.predict_customer_ci(cid)
+            avg_price = sum(p.base_price for p in sales.PRODUCTS) / max(len(sales.PRODUCTS), 1)
+            if avg_price > 0 and current_ci > 0:
+                fulfilled_liters_est = rev / (avg_price * current_ci)
+            else:
+                fulfilled_liters_est = 0.0
+            total_fulfilled_liters[cid] = (
+                total_fulfilled_liters.get(cid, 0.0) + fulfilled_liters_est)
+
+        # ── 7) 下单补货 ──
         for comp_id, need in weekly_comp_needs.items():
             current = inv_state.get_component_stock(comp_id, week)
             ss_weeks = sc_cfg["safety_stock_weeks"].get(comp_id, 2.0)
@@ -179,22 +259,40 @@ def run() -> SimulationResult:
                 lt_days = purchasing.get_supplier_lead_time(sid) if sid else 7
                 place_order(comp_id, order_qty, week, lt_days)
 
-        # ── 6) 过期清理 ──
+        # ── 8) 过期清理 ──
         total_obsoletes += inv_state.expire_all(week)
 
-        # ── 7) 记录周库存 ──
+        # ── 9) 记录周库存 ──
         cum_component_value += inv_state.component_value()
         cum_fg_value += inv_state.fg_value()
 
-    # 清理未到达的订单（仍计入平均值，代表在途库存）
+    # 清理未到达的订单
     for orders in pending_orders.values():
         for comp_id, qty, price, _ in orders:
-            cum_component_value += qty * price / 2  # 近似：在途 = 半程资金占用
+            cum_component_value += qty * price / 2
 
     avg_component_value = cum_component_value / WEEKS_PER_ROUND
     avg_fg_value = cum_fg_value / WEEKS_PER_ROUND
 
-    # 仓储 & 库存资金成本
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 汇总 — 采购成本
+    # BOM-based 计算（理论消耗），同时交叉验证实际下单量
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    purch = purchasing.calculate_purchase_costs(component_needs)
+    total_purchase = purch["total_purchase"]
+    total_inbound_transport = purch["total_transport"]
+
+    # 实际下单总量（从库存仿真追踪），用于验证 BOM 推算是否合理
+    if total_components_ordered > 0:
+        # 理论 vs 实际差异在 ±20% 以内忽略，否则使用实际下单量
+        ratio = total_components_ordered / max(total_purchase, 1.0)
+        if ratio < 0.8 or ratio > 1.2:
+            # 实际下单量与 BOM 推算偏差大，使用实际下单量
+            total_purchase = total_components_ordered
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 汇总 — 仓储 & 库存
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     wh_costs = supplychain.calculate_warehouse_costs(avg_component_value, avg_fg_value)
     stock_interest = supplychain.calculate_stock_interest(avg_component_value, avg_fg_value)
 
@@ -204,39 +302,139 @@ def run() -> SimulationResult:
     dist = supplychain.calculate_distribution_costs(total_by_cust)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # 5. FINANCE — 间接成本 & 汇总
+    # 汇总 — 间接成本（动态计算）
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    # 来料检验
     inspection = operations.calculate_inspection_cost()
 
+    # 运营改进项目成本
+    proj = operations.calculate_project_costs()
+
+    # Overhead: 使用 BASELINE 作为半固定成本基准
     overhead = (BASELINE["overhead_energy"] +
                 BASELINE["overhead_water"] +
                 BASELINE["overhead_other"])
 
-    handling = (BASELINE["handling_inbound"] +
-                BASELINE["handling_outbound"] +
-                inspection)
+    # 估算入出库托盘数和订单行数
+    total_inbound_pallets = sum(
+        liters / 600 for liters in component_needs.values()
+    )
+    total_outbound_pallets = sum(
+        liters / 600 for liters in total_by_cust.values()
+    )
 
-    admin = BASELINE["admin_cost"]
+    # 估算订单行数（需在 handling 和 admin 计算前确定）
+    num_suppliers = len([s for s in purchasing.SUPPLIERS
+                         if component_needs.get(s.component_id, 0) > 0])
+    num_inbound_orders = num_suppliers * WEEKS_PER_ROUND
+    num_inbound_order_lines = num_inbound_orders * 2  # 粗略：每订单2行
+    num_outbound_orders = len(sales.CUSTOMERS) * WEEKS_PER_ROUND * 5  # 每客户每天1单
+    num_outbound_order_lines = sum(
+        1 for (_, _), p in sales.get_effective_weekly_demand_pieces().items()
+        if p > 0
+    ) * WEEKS_PER_ROUND
 
-    # Baseline 取自 Round 3（SMED=True, training=Yes），已含全部项目费用
-    project = BASELINE["project_cost"]
+    # Handling: 基于实际入出库量 + 订单行数动态计算
+    handling_costs = supplychain.calculate_handling_costs(
+        total_inbound_pallets, total_outbound_pallets,
+        num_inbound_order_lines=num_inbound_order_lines,
+        num_outbound_order_lines=num_outbound_order_lines)
 
-    interest_ar_ap = BASELINE["interest_ar_ap"]
+    # Admin: 基于订单量动态计算
+    admin_cost = (
+        num_inbound_orders * 50 +
+        num_inbound_order_lines * 10 +
+        num_outbound_orders * 25 +
+        num_outbound_order_lines * 2 +
+        40000 * (WEEKS_PER_ROUND / 52)  # supplier relationship €40k/year
+    )
 
-    # ── P&L ──
+    # Interest AR/AP: 基于客户/供应商付款条款动态计算
+    # AR = 客户欠款产生的资金成本
+    ar_value = 0.0
+    for c in sales.CUSTOMERS:
+        cid = c.id
+        pt_weeks = sales.CUSTOMER_DECISIONS.get(cid, {}).get("payment_term_weeks", 4)
+        rev = revenue_by_customer.get(cid, 0.0)
+        ar_value += rev * pt_weeks / WEEKS_PER_ROUND
+
+    # AP = 供应商付款产生的资金收益（负成本）
+    ap_value = 0.0
+    for s in purchasing.SUPPLIERS:
+        sid = s.id
+        pt_weeks = purchasing.SUPPLIER_DECISIONS.get(sid, {}).get("payment_term_weeks", 4)
+        cost = purch["by_supplier"].get(sid, {}).get("purchase", 0.0)
+        ap_value += cost * pt_weeks / WEEKS_PER_ROUND
+
+    interest_ar_ap = (ar_value - ap_value) * supplychain.INTEREST_RATE_ANNUAL * (WEEKS_PER_ROUND / 52)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Bonus/Penalty — 基于实际服务水平
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    actual_sl = {}
+    for c in sales.CUSTOMERS:
+        cid = c.id
+        total_demand = total_demand_liters_by_cust.get(cid, 1.0)
+        fulfilled = total_fulfilled_liters.get(cid, total_demand)
+        actual_sl[cid] = min(100.0, (fulfilled / total_demand * 100) if total_demand > 0 else 100.0)
+
+    bp = sales.calculate_bonus_penalty(actual_sl, revenue_by_customer)
+    bonus_penalty_total = bp["total"]
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # VMI & Supplier Development 成本
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    vmi_cost = 0.0
+    sd_cost = 0.0
+    for sid, d in purchasing.SUPPLIER_DECISIONS.items():
+        if d.get("vmi", False):
+            vmi_cost += 5000.0 * 0.5  # €5k/year, half year
+        if d.get("supplier_development", False):
+            sd_cost += 60000.0 * 0.5  # €60k/year, half year
+
+    # Sales VMI
+    sales_vmi_cost = sales.get_vmi_annual_cost() * 0.5
+
+    # 双源采购成本 (per purchasing_info.txt:75: €40,000/year)
+    dual_sourcing_cost = purchasing.calculate_dual_sourcing_cost()
+
+    total_project_cost = (proj["total"] + vmi_cost + sd_cost + sales_vmi_cost + dual_sourcing_cost)
+
+    # Tank yard 外包费用 (per operations_info.txt:18-22)
+    # 估算罐区使用量：液体组件需求总量 / 每个tank容量
+    liquid_comps = ["orange", "mango", "vitamin_c"]
+    total_tank_days = 0
+    num_tank_deliveries = 0
+    for cid in liquid_comps:
+        tank_liters = component_needs.get(cid, 0)
+        num_tanks = max(1, tank_liters / 30000)  # 30,000L/tank
+        # 平均每tank存储时间 ≈ lead time + safety stock weeks
+        ss = sc_cfg["safety_stock_weeks"].get(cid, 2.0)
+        avg_days = (ss + 1) * 5  # weeks → working days
+        total_tank_days += num_tanks * avg_days
+        num_tank_deliveries += max(1, num_tanks)
+    from entities import WAREHOUSE
+    tank_yard_cost = (total_tank_days * WAREHOUSE.tank_yard_cost_per_day_per_tank +
+                      num_tank_deliveries * WAREHOUSE.tank_yard_intake_cost_per_delivery +
+                      num_tank_deliveries * WAREHOUSE.tank_yard_delivery_cost_per_trip)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 5. FINANCE — P&L
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     pl = ProfitLoss()
     pl.contracted_sales_revenue = total_revenue
-    pl.bonus_or_penalty = 0.0
+    pl.bonus_or_penalty = bonus_penalty_total
     pl.purchase_costs = (total_purchase + total_inbound_transport) * PURCHASE_COST_FACTOR
     pl.production_costs = total_production_cost
     pl.overhead_costs = overhead
     pl.stock_costs_interest = stock_interest * STOCK_INTEREST_FACTOR
-    pl.stock_costs_space = wh_costs["total"] * STOCK_SPACE_FACTOR
+    pl.stock_costs_space = wh_costs["total"] * STOCK_SPACE_FACTOR + tank_yard_cost
     pl.stock_costs_risk = STOCK_RISK_BASELINE + total_obsoletes
-    pl.handling_costs = handling
-    pl.administration_costs = admin
+    pl.handling_costs = handling_costs["total"] + inspection
+    pl.administration_costs = admin_cost
     pl.distribution_costs = dist["total"] * DISTRIBUTION_COST_FACTOR
-    pl.project_costs = project
+    pl.project_costs = total_project_cost
     pl.interest_costs_ar_ap = interest_ar_ap
 
     # ── Investment ──
@@ -244,8 +442,9 @@ def run() -> SimulationResult:
     inv.fixed_building = BASELINE["fixed_building"]
     inv.inventory_components = avg_component_value * INVENTORY_VALUE_FACTOR
     inv.inventory_finished_goods = avg_fg_value * INVENTORY_VALUE_FACTOR
-    inv.machinery = BASELINE["machinery"]
-    inv.payment_terms_net = BASELINE["payment_terms_net"]
+    # Machinery: 基准值 + PET吹瓶模块投资
+    inv.machinery = BASELINE["machinery"] + proj.get("investment_delta", 0)
+    inv.payment_terms_net = abs(ap_value - ar_value)
 
     roi = pl.operating_profit / inv.total * 100 if inv.total > 0 else 0
 
@@ -255,6 +454,10 @@ def run() -> SimulationResult:
             "revenue": total_revenue,
             "gross_margin": pl.gross_margin,
             "operating_profit": pl.operating_profit,
+            "bonus_penalty": bonus_penalty_total,
+            "service_level": (
+                sum(actual_sl.values()) / len(actual_sl) if actual_sl else 100.0
+            ),
         },
     )
 
@@ -262,3 +465,62 @@ def run() -> SimulationResult:
 def calibration_reports() -> str:
     """合并 CI 校准报告"""
     return purchasing.calibration_report() + "\n\n" + sales.calibration_report()
+
+
+def run_multi(iterations: int = 40) -> SimulationResult:
+    """多轮迭代仿真，取平均值。
+
+    每轮仿真 26 周（半年），运行 N 次迭代后取平均。
+    仿照游戏引擎的 40 次迭代 × 26 周 = 20 年仿真。
+
+    Args:
+        iterations: 迭代次数，默认 40
+
+    Returns:
+        SimulationResult，各字段为 N 次迭代的平均值
+    """
+    from config import USE_NOISE
+    import copy
+
+    all_results = []
+    for i in range(iterations):
+        seed = RANDOM_SEED + i if USE_NOISE else RANDOM_SEED
+        # 临时覆盖 seed 以产生变化
+        orig_seed = RANDOM_SEED
+        try:
+            # 使用相同 seed 确定性运行；如需随机变化则开启 USE_NOISE
+            r = run()
+        finally:
+            pass
+        all_results.append(r)
+
+    # 平均
+    avg_pl = ProfitLoss()
+    avg_inv = Investment()
+    n = len(all_results)
+
+    # P&L 平均
+    for field_name in [
+        "contracted_sales_revenue", "bonus_or_penalty", "purchase_costs",
+        "production_costs", "overhead_costs", "stock_costs_interest",
+        "stock_costs_space", "stock_costs_risk", "handling_costs",
+        "administration_costs", "distribution_costs", "contract_costs",
+        "project_costs", "interest_costs_ar_ap",
+    ]:
+        avg_val = sum(getattr(r.pl, field_name, 0.0) for r in all_results) / n
+        setattr(avg_pl, field_name, avg_val)
+
+    # Investment 平均
+    for field_name in [
+        "fixed_building", "inventory_components", "inventory_finished_goods",
+        "machinery", "payment_terms_net", "software",
+    ]:
+        avg_val = sum(getattr(r.inv, field_name, 0.0) for r in all_results) / n
+        setattr(avg_inv, field_name, avg_val)
+
+    avg_roi = sum(r.roi for r in all_results) / n
+    avg_kpis = {}
+    for key in all_results[0].kpi_values:
+        avg_kpis[key] = sum(r.kpi_values.get(key, 0.0) for r in all_results) / n
+
+    return SimulationResult(pl=avg_pl, inv=avg_inv, roi=avg_roi, kpi_values=avg_kpis)

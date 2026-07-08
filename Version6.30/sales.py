@@ -456,6 +456,20 @@ DAILY_DEMAND_WEIGHTS = [0.20, 0.20, 0.20, 0.20, 0.20]
 # 日需求随机波动标准差（相对值），仅 USE_NOISE=True 时生效
 DAILY_DEMAND_NOISE_STD = 0.05
 
+# 短缺规则 (per sales_info.txt:140-149)
+#   "proportional"    — 等比分配短缺 (默认)
+#   "fcfs"           — 先到先得 (按订单时间)
+#   "priority"       — 客户优先级 (需配置 CUSTOMER_PRIORITY)
+SHORTAGE_RULE = "proportional"
+
+# 客户优先级（仅 SHORTAGE_RULE == "priority" 时生效）
+# 数值越小优先级越高
+CUSTOMER_PRIORITY: Dict[str, int] = {
+    "c_fg":   1,
+    "c_dom":  2,
+    "c_land": 3,
+}
+
 
 # ═══════════════════════════════════════════════════════════════
 # 日级销售仿真 — 数据结构和模拟器
@@ -601,35 +615,72 @@ class DailySalesSimulator:
         original_total_demand = sum(product_demand.values())
         result.demand_liters = original_total_demand
 
-        # ── 2) 库存约束（对齐 operations._check_component_availability 的逻辑）──
-        # 找最紧张的产品 → 确定最大可行比例 → 等比缩减所有客户订单
-        # 注意：fg_inventory 中未列出的产品视为不限量（与 operations 的 component_stock 一致）
-        scale_factor = 1.0
+        # ── 2) 库存约束 ──
+        remaining_fg = {}
         if fg_inventory is not None:
+            for pid in product_demand:
+                remaining_fg[pid] = fg_inventory.get(pid, float('inf'))
+
+        # ── 3) 按短缺规则发货 & 计算收入 ──
+        # per sales_info.txt:140-149:
+        #   proportional: 等比分配短缺（默认）
+        #   fcfs: 先到先得
+        #   priority: 客户优先级
+        rule = SHORTAGE_RULE
+
+        # Proportional 规则: 预计算全局缩放因子
+        scale_factor = 1.0
+        if rule == "proportional" and fg_inventory is not None:
             for pid, need in product_demand.items():
                 if pid not in fg_inventory:
-                    continue  # 未传入 = 不限量
-                available = fg_inventory[pid]
-                if need > 0 and available < need:
+                    continue
+                available = remaining_fg.get(pid, float('inf'))
+                if available != float('inf') and need > 0 and available < need:
                     s = available / need
                     if s < scale_factor:
                         scale_factor = s
 
-        # ── 3) 按比例发货 & 计算收入 ──
+        # 构建订单列表
+        orders = []
         for (pid, cid), liters in detail_demand.items():
+            if liters <= 0:
+                continue
+            orders.append((pid, cid, liters))
+
+        # 按规则排序（FCFS/Priority 才排序）
+        if rule == "fcfs":
+            def _fcfs_key(o):
+                _, cid, _ = o
+                od = CUSTOMER_DECISIONS.get(cid, {}).get("order_deadline", "12:00")
+                od_map = {"12:00": 0, "14:00": 1, "17:00": 2, "20:00": 3}
+                return od_map.get(od, 1)
+            orders.sort(key=_fcfs_key)
+        elif rule == "priority":
+            orders.sort(key=lambda o: CUSTOMER_PRIORITY.get(o[1], 99))
+
+        for pid, cid, liters in orders:
             p = PRODUCT_MAP.get(pid)
-            if not p or liters <= 0:
+            if not p:
                 continue
 
-            fulfilled = liters * scale_factor
+            # 计算该订单的实际发货量
+            if rule == "proportional":
+                fulfilled = liters * scale_factor
+            else:
+                # FCFS / Priority: 从剩余库存中扣除
+                if remaining_fg is not None and pid in remaining_fg:
+                    available = remaining_fg[pid]
+                    fulfilled = min(liters, max(0.0, available))
+                else:
+                    fulfilled = liters
+
             if fulfilled < 0.001:
                 continue
 
-            # 使用游戏实际售价作为基准，乘以 CI delta
-            actual_price = ACTUAL_SALES_PRICES.get((pid, cid), p.base_price)
-            price_per_liter = actual_price / p.liters_per_pack
-
-            rev = fulfilled * price_per_liter * ci_deltas.get(cid, 1.0)
+            # 公式: Sales Price × Items × Contract Index
+            current_ci = predict_customer_ci(cid)
+            price_per_liter = (p.base_price / p.liters_per_pack) * current_ci
+            rev = fulfilled * price_per_liter
 
             result.fulfilled_liters += fulfilled
             result.revenue += rev
@@ -640,7 +691,9 @@ class DailySalesSimulator:
             result.revenue_by_product[pid] = (
                 result.revenue_by_product.get(pid, 0.0) + rev)
 
-            # 消耗成品库存（供调用方更新）
+            # 消耗成品库存
+            if remaining_fg is not None and pid in remaining_fg and remaining_fg[pid] != float('inf'):
+                remaining_fg[pid] = max(0.0, remaining_fg[pid] - fulfilled)
             if fg_inventory is not None and pid in fg_inventory:
                 fg_inventory[pid] = max(0.0, fg_inventory[pid] - fulfilled)
 
@@ -757,12 +810,18 @@ class DailySalesSimulator:
 # 销售收入计算（周级，向后兼容）
 # ═══════════════════════════════════════════════════════════════
 
-def calculate_revenue() -> Dict:
+def calculate_revenue(fulfilled_by_customer: Dict[str, float] = None) -> Dict:
     """
     计算 26 周销售收入。
 
-    逻辑：Revenue = Σ(有效周需求 × 26 × 基础售价 × 客户 CI)
-    有效需求已包含促销压力的影响，使用游戏实际售价数据进行标定。
+    公式 (per finance_info.txt):
+      Revenue = Σ(Sales Price × Items Sold × Contract Index)
+
+    使用 base_price × current_ci 计算，对齐文档公式。
+
+    参数:
+        fulfilled_by_customer: 可选，{customer_id: fulfilled_liters} 实际发货量。
+                               不传则使用有效周需求（假设全部满足）。
 
     返回:
         {
@@ -770,12 +829,15 @@ def calculate_revenue() -> Dict:
             "by_customer": {customer_id: float},
             "by_product": {product_id: float},
             "ci_deltas": {customer_id: delta},
+            "current_cis": {customer_id: float},
         }
     """
     total_revenue = 0.0
     by_customer: Dict[str, float] = {}
     by_product: Dict[str, float] = {}
-    ci_deltas = get_customer_ci_deltas()
+    current_cis = {}
+    for c in CUSTOMERS:
+        current_cis[c.id] = predict_customer_ci(c.id)
 
     # 使用有效需求（已应用促销压力影响）
     effective_demand = get_effective_weekly_demand_pieces()
@@ -784,11 +846,24 @@ def calculate_revenue() -> Dict:
         if not p:
             continue
         liters_per_week = pieces * p.liters_per_pack
-        # 使用实际售价（来自游戏数据）作为基准，乘以 CI delta 反映决策变化
-        actual_price = ACTUAL_SALES_PRICES.get((pid, cid), p.base_price)
-        price_per_liter = actual_price / p.liters_per_pack  # 换算为 EUR/L
 
-        weekly_revenue = liters_per_week * price_per_liter * ci_deltas.get(cid, 1.0)
+        # 公式: Sales Price × Items × Contract Index
+        # base_price 是每件价格，除以 liters_per_pack 得到每升价格
+        price_per_liter = (p.base_price / p.liters_per_pack) * current_cis.get(cid, 1.0)
+
+        # 如果传入了实际发货量，按实际发货计算
+        if fulfilled_by_customer and cid in fulfilled_by_customer:
+            # 按比例缩放：该客户该产品的实际发货 / 该客户总需求
+            demand = weekly_demand_liters(customer_id=cid, effective=True)
+            if demand > 0:
+                scale = fulfilled_by_customer[cid] / demand
+                weekly_liters = liters_per_week * min(scale, 1.0)
+            else:
+                weekly_liters = 0.0
+        else:
+            weekly_liters = liters_per_week
+
+        weekly_revenue = weekly_liters * price_per_liter
         round_revenue = weekly_revenue * WEEKS_PER_ROUND
 
         total_revenue += round_revenue
@@ -799,8 +874,55 @@ def calculate_revenue() -> Dict:
         "total_revenue": total_revenue,
         "by_customer": by_customer,
         "by_product": by_product,
-        "ci_deltas": ci_deltas,
+        "ci_deltas": get_customer_ci_deltas(),
+        "current_cis": current_cis,
     }
+
+
+def calculate_bonus_penalty(actual_service_level: Dict[str, float],
+                            revenue_by_customer: Dict[str, float]) -> Dict:
+    """计算 Bonus/Penalty。
+
+    依据 sales_info.txt:
+      - 实际服务水平 < 承诺 → Penalty (折扣)
+      - 实际服务水平 > 承诺 → Bonus (小额奖励)
+      - Bonus 通常低于 Penalty
+
+    参数:
+        actual_service_level: {customer_id: actual_service_level_pct}
+        revenue_by_customer: {customer_id: revenue}
+
+    返回:
+        {"total": float (正值=bonus, 负值=penalty), "by_customer": {cid: float}}
+    """
+    PENALTY_FACTOR = 0.5   # 每1%服务不足 → 0.5%收入扣减
+    BONUS_FACTOR = 0.2     # 每1%超额服务 → 0.2%收入奖励
+
+    total_bonus_penalty = 0.0
+    by_customer = {}
+
+    for c in CUSTOMERS:
+        cid = c.id
+        promised_sl = CUSTOMER_DECISIONS.get(cid, {}).get("service_level_pct", 95.0)
+        actual_sl = actual_service_level.get(cid, 100.0)
+        revenue = revenue_by_customer.get(cid, 0.0)
+
+        if actual_sl < promised_sl:
+            # Penalty
+            shortfall = promised_sl - actual_sl
+            penalty = revenue * (shortfall / 100.0) * PENALTY_FACTOR
+            by_customer[cid] = -penalty
+            total_bonus_penalty -= penalty
+        elif actual_sl > promised_sl:
+            # Bonus (smaller than penalty)
+            excess = actual_sl - promised_sl
+            bonus = revenue * (excess / 100.0) * BONUS_FACTOR
+            by_customer[cid] = bonus
+            total_bonus_penalty += bonus
+        else:
+            by_customer[cid] = 0.0
+
+    return {"total": total_bonus_penalty, "by_customer": by_customer}
 
 
 # ═══════════════════════════════════════════════════════════════

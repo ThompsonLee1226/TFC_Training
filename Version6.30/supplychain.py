@@ -221,12 +221,47 @@ def calculate_warehouse_costs(avg_raw_value: float, avg_fg_value: float,
     }
 
 
-def calculate_handling_costs(inbound_pallets: float, outbound_pallets: float) -> Dict[str, float]:
-    """人工搬运成本"""
-    wh = WAREHOUSE
-    half = WEEKS_PER_ROUND / 52
-    inbound_labor = inbound_pallets * 0.5 * 20 * half  # rough: 0.5h/pallet × EUR 20/h
-    outbound_labor = outbound_pallets * 0.3 * 20 * half
+def calculate_handling_costs(inbound_pallets: float, outbound_pallets: float,
+                              num_inbound_order_lines: int = 0,
+                              num_outbound_order_lines: int = 0) -> Dict[str, float]:
+    """人工搬运成本（26周），基于 operations_info.txt 中的工时数据。
+
+    原料仓库 (per operations_info.txt:24-32):
+      - 入库: 1h/订单行 + 6min/托盘
+      - 供应生产: 6min/托盘, 12min/罐
+      - 日常管理: 4h/天
+      - 溢出仓库: 6min/托盘
+      - IBC充填: 1h/IBC
+
+    成品仓库 (per operations_info.txt:145-155):
+      - 入库存储: 6min/托盘
+      - 拣货: 10min/订单行 + 6min/托盘 + 3min/外箱
+      - 溢出仓库: 6min/托盘
+      - 报废处理: 6min/托盘
+      - 清洁整理: 4h/天
+    """
+    # 基础参数
+    half_year_weeks = WEEKS_PER_ROUND
+    half_year_days = half_year_weeks * 5  # 130 working days
+    hour_rate = 40000.0 / (52 * 40)  # €/h = 年薪 / (52周 × 40h) ≈ €19.23/h
+
+    # 原料仓库工时
+    inbound_hours = (
+        num_inbound_order_lines * 1.0 +        # 1h/订单行
+        inbound_pallets * 0.1 +                 # 6min/托盘 = 0.1h
+        half_year_days * 4.0                    # 4h/天 日常管理
+    )
+    # 成品仓库工时
+    outbound_hours = (
+        outbound_pallets * 0.1 +                # 6min/托盘 入库
+        num_outbound_order_lines * (10.0/60) +  # 10min/订单行
+        outbound_pallets * 0.1 +                # 6min/托盘 拣货
+        half_year_days * 4.0                    # 4h/天 清洁
+    )
+
+    inbound_labor = inbound_hours * hour_rate
+    outbound_labor = outbound_hours * hour_rate
+
     return {
         "inbound": inbound_labor,
         "outbound": outbound_labor,

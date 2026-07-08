@@ -74,6 +74,27 @@ SUPPLIER_DECISIONS: Dict[str, dict] = {
 
 
 # ═══════════════════════════════════════════════════════════════
+# 双源采购配置 (per purchasing_info.txt:75-78)
+# 为每个组件启用双源采购需 €40,000/年/额外供应商
+# ═══════════════════════════════════════════════════════════════
+DUAL_SOURCING: Dict[str, bool] = {
+    "pack_1l":   False,
+    "pet":       False,
+    "orange":    False,
+    "mango":     False,
+    "vitamin_c": False,
+}
+
+DUAL_SOURCING_COST_ANNUAL = 40000.0  # €/年/额外供应商
+
+
+def calculate_dual_sourcing_cost() -> float:
+    """双源采购成本（26周）"""
+    count = sum(1 for v in DUAL_SOURCING.values() if v)
+    return count * DUAL_SOURCING_COST_ANNUAL * 0.5  # half year
+
+
+# ═══════════════════════════════════════════════════════════════
 # Supplier Contract Index 模型
 # ================================================================
 # 公式来源：对 TFC V9 游戏 API 进行系统性参数扫描，实测破解
