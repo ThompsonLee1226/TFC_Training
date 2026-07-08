@@ -1,0 +1,150 @@
+Negotiations
+The VP of Sales negotiates delivery terms with customers, covering aspects such as order quantities, service levels, shelf life, and payment terms. A well-negotiated sale can secure a favorable contract index, directly influencing the final sales price. Over-promising however, leads to penalties and erosion of margins.
+
+Contract index
+The contract index determines whether a customer pays a premium or receives a discount on the basic sales price. It is calculated based on the Service Level Agreement (SLA) terms.
+
+A contract index of 1.05 means the customer agrees to pay 5% above the basic price, reflecting stricter SLA terms.
+
+A contract index of 0.95 means the customer insists on a 5% discount, likely due to less favorable terms.
+
+The contract index is not the sole determinant of the final price. If service levels are not met, customers apply penalties. Conversely, if service levels exceed expectations, a customer may offer a small bonus. The bonus is generally lower than what could have been achieved through negotiating the achieved added-value to service level contracts upfront.
+
+Service level
+Service level agreements (SLA) are critical performance measures and measureThe Fresh Connection’s reliability to fulfill customer demand on time and in full (OTIF).
+
+Customers prefer reliable suppliers with higher service levels which delivers a higher contract index and results in higher unit prices . However, failing to meet the promised service level may lead to penalties and an effective higher discounts on the contract index, impacting the final price.
+
+While a higher service level can attract a premium, it also introduces risk if the supply chain fails to meet the agreed standards. If the actual service level exceeds the agreed terms, the customer may offer a small bonus. The bonus is generally lower than what could have been achieved through negotiating the achieved added-value to service level contracts upfront.
+
+The VP of Sales must carefully balance service level commitments with supply chain feasibility to ensure realistic agreements that optimize revenue without increasing risks.
+
+Service level type
+The service level is a measure of The Fresh Connection's ability to meet customer demand on time and in full (OTIF). It can be calculated in different ways, depending on the agreement with the customer. The service level can be measured as:
+
+The total number of units delivered on time and in full as a percentage of the total number of ordered units.
+
+The total number of order lines delivered on time and in full as a percentage of the total order lines.
+
+The total number of orders fulfilled on time and in full as a percentage of the total requested orders.
+
+It's generally easier to achieve higher performance levels at the lower aggregate.
+
+Example: One order may include 5 order lines. The Fresh Connection may deliver On Time and In Full on 4 of those order lines. This will result in an 80% OTIF Service Delivery on an Order Line level (4/5), and 0% OTIF at an Order Level (0/1). While four of the order lines on that order were delivered, at an Order Level measure the order will not be considered On Time In Full.
+
+Requested shelf life (%)
+The VP of Sales can negotiate the minimum shelf-life requirement in the Service Level Agreement (SLA) as a percentage of total shelf life. Fresh juice is a perishable product with a limited shelf life that starts as soon as the finished products leave the bottling line. A higher shelf-life is a significant added-value and increases the contract index, as customers are willing to pay more for fresher products. Customers prefer to receive products with the longest possible remaining shelf life to allow longer storage and offer consumers a longer shelf-life.
+
+Example: If a product has a 20-week shelf life and the SLA requires a 70% shelf life, then only products with at least 14 weeks of remaining shelf life will be delivered.
+
+At the same time, The Fresh Connection must maintain a safety stock to ensure it can fulfill orders. The higher the shelf-life requirement, the lower the stock level in weeks that The Fresh Connection can maintain before the product becomes obsolete.
+
+Minimum shelf-life requirement: 40%
+
+Maximum shelf-life requirement: 85%
+
+Order deadline
+The order deadline is the latest time a customer can place an order each day. Customers prefer later deadlines for flexibility and offer a higher contract index for this benefit. However, if the deadline is too late, the outbound warehouse employees may struggle to process all order lines on time, affecting deliveries.
+
+Distribution pattern
+The distribution pattern defines the days on which The Fresh Connection delivers finished goods to customers. Customers prefer a steady flow of deliveries to prevent capacity peaks at their distribution centers and to keep average stock levels low. However, frequent deliveries increase distribution costs.
+
+To optimize logistics:
+
+Daily deliveries smooth out distribution center demand.
+
+Consolidating order lines reduces costs by increasing load factor per shipment.
+
+Trade unit
+A trade unit defines how customers place orders with The Fresh Connection. It is both the Order Minimum and the Order Multiple. Orders are delivered in multiples of the selected trade unit.
+
+Trade unit options:
+
+Outer box: The smallest order quantity is the content of an outer box.
+
+Pallet layer: Orders are placed in layers of a pallet.
+
+Pallet: Orders are placed in full pallets.
+
+Customers prefer smaller trade units for flexibility and offer a higher contract index for this option. However, smaller trade units increase workload for warehouse employees, as picking outer boxes or pallet layers takes longer than preparing full pallets.
+
+Promotional pressure
+The promotional pressure determines the number and the extent of the special offers involving finished product from The Fresh Connection that the customers launch. When undertaking a promotional campaign, the customer gives the consumer a discount and The Fresh Connection will have to cover a part of that discount. The contract index will thus decrease as the promotional pressure increases. However, consumers will also be buying increased amounts of The Fresh Connection juice during these campaigns. So there is an associated opportunity of increasing the revenue. 
+
+
+
+For basic customers the demand will increase according to the following table:
+
+Benchmark demand
+=	0% additional sales in liters
+Low promotional pressure
+=	0.5% - 1.0% additional sales
+Middle promotional pressure
+=	1.5% - 2.0% additional sales
+High promotional pressure
+=	4.0% - 5.5% additional sales
+
+
+For “Value for Money” customers these factors will be doubled.
+
+For product customer combination labeled as slowmover the percentages will also be doubled for that combination.
+
+Promotion horizon
+The promotion horizon specifies how many weeks in advance a customer must inform The Fresh Connection about an upcoming promotional campaign, including details on product type and quantity.
+
+Customers prefer a short promotion horizon for flexibility.
+
+A longer horizon allows The Fresh Connection more visibiliy and time to plan production and anticipate demand fluctuations.
+
+Bonus policy
+The sales volume rebate policy provides customers with a discount when they purchase a specified volume of product within a set period.
+
+Increasing rebate incentives improves customer satisfaction and raises the contract index.
+
+However, customers may place larger, less predictable orders, increasing demand volatility.
+
+Payment terms
+Payment terms define the period within which customers must pay for received products.
+
+Customers prefer longer payment terms, which can influence the contract index positively.
+
+Shorter payment terms however, benefit cash flow management for The Fresh Connection.
+
+VMI
+Vendor Managed Inventory (VMI) provides visibilty into inventory levels at customer distribution centers. The Fresh Connection can use this data to improve forecast accuracy and optimize deliveries which helps manage shelf-life.
+
+VMI allows The Fresh Connection to prepare customer orders independently, converting trade units into pallet quantities for greater efficiency in outbound logistics. Since orders are prepared in advance, the order placement deadline can be lowered to 14:00.
+
+The success of VMI depends on several factors, including: * The type of customer. * The available storage space at customer distribution centers.
+
+A VMI project costs €5,000 per annum.
+
+Customer Location
+The location of the customer’s Distribution Center (DC).
+
+Category management
+The VP of Sales decides on the product assortment offered to each customer. It is possible to exclude certain products for specific customers. While reducing The Fresh Connection's assortment may decrease revenue, it can also present an opportunity to reduce costs.
+
+Consequences of excluding one finished product for one customer
+If a finished product is excluded for a specific customer, it will not be delivered to that customer.
+
+Consequences of excluding one finished product
+If a finished product is excluded for all customers, it is no longer stocked or produced. VPs of Supply Chain Management and Operations no longer need to manage decisions related to that product.
+
+Consequences of excluding one customer
+If a customer is excluded from the assortment, no finished products are delivered to them. The customer remains visible in the "agreement" tab, but negotiations with this customer will not have any effect.
+
+Consequences of excluding a component
+If a finished product is removed from the assortment offered to all customers, any associated component is no longer required for production. As a result, this component will not be purchased. The VP of Supply Chain does not need to manage inventory for that component, including safety stock and lot sizes. The agreement with the supplier of the component remains valid for the agreed duration unless terminated. Since ongoing contract costs apply for each supplier, the VP of Purchasing must terminate the agreement if cost savings are preferred.
+
+Shortage rule
+If The Fresh Connection's stock of finished products is insufficient to meet customer demand, the shortage rule determines how remaining stock is allocated:
+
+Proportional Method: The shortage is equally distributed across all customer orders for the day.
+
+First-Come-First-Served: Orders are fulfilled based on order time, with earlier orders receiving priority.
+
+Customer Priority Principle: The VP of Sales ranks customers by priority, with higher-priority customers receiving deliveries first. The lowest-priority customers experience the greatest impact from shortages.
+
+Priority
+If stock is insufficient to meet all customer demand, the customer priority determines which orders are fulfilled first. If demand from the highest-priority customer is met and stock remains, the next priority level receives fulfillment, continuing in order of priority.
