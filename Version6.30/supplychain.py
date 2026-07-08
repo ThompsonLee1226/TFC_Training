@@ -200,24 +200,71 @@ def calculate_distribution_costs(demand_by_customer: Dict[str, float]) -> Dict:
 
 
 def calculate_warehouse_costs(avg_raw_value: float, avg_fg_value: float,
-                              avg_tank_days: float = 0) -> Dict[str, float]:
-    """仓储成本（26 周，从库存价值反推空间占用）"""
+                              avg_tank_days: float = 0,
+                              avg_comp_qty: Dict[str, float] = None,
+                              avg_fg_qty: Dict[str, float] = None) -> Dict[str, float]:
+    """仓储成本（26 周），基于实际托盘/罐区占用计算。
+
+    Args:
+        avg_raw_value: 组件平均库存价值（备用，用于回退估算）
+        avg_fg_value: 成品平均库存价值（备用）
+        avg_tank_days: 罐区平均每日使用量
+        avg_comp_qty: {comp_id: avg_quantity} 各组件平均库存量（pieces for 包装, L for 液体）
+        avg_fg_qty: {pid: avg_liters} 各成品平均库存升数
+    """
     wh = WAREHOUSE
     half = WEEKS_PER_ROUND / 52
+    half_year_days = WEEKS_PER_ROUND * 5  # 130 working days
 
-    # 粗略估算托盘数：库存价值 / 单位成本 / 每托盘容量
-    raw_pallets = avg_raw_value / 0.30 / 600  # rough
-    fg_pallets = avg_fg_value / 0.50 / 600
+    raw_pallets = 0.0
+    fg_pallets = 0.0
+    tank_liters = 0.0
 
+    # ── 组件托盘/罐区 ──
+    if avg_comp_qty:
+        for comp_id, avg_qty in avg_comp_qty.items():
+            c = COMPONENT_MAP.get(comp_id)
+            if c and c.pallet_content:
+                # 包装组件：按实际 pallet_content 换算
+                raw_pallets += avg_qty / c.pallet_content
+            else:
+                # 液体组件 → 罐区
+                tank_liters += avg_qty
+    else:
+        # 回退：粗略估算
+        raw_pallets = avg_raw_value / 0.30 / 600
+
+    # ── 成品托盘 ──
+    if avg_fg_qty:
+        for pid, avg_liters in avg_fg_qty.items():
+            p = PRODUCT_MAP.get(pid)
+            if p and p.per_pallet > 0:
+                pieces = avg_liters / p.liters_per_pack
+                fg_pallets += pieces / p.per_pallet
+    else:
+        fg_pallets = avg_fg_value / 0.50 / 600
+
+    # ── 空间成本 ──
     raw_space = raw_pallets * wh.pallet_location_cost_annual * half
     fg_space = fg_pallets * wh.pallet_location_cost_annual * half
-    tank = avg_tank_days * wh.tank_yard_cost_per_day_per_tank * half
+
+    # 罐区：tank_liters / 30000 L per tank
+    num_tanks = tank_liters / 30000.0 if tank_liters > 0 else 0
+    tank = num_tanks * wh.tank_yard_cost_per_day_per_tank * half_year_days
+
+    # 溢出仓库（超出配置托盘位时触发）
+    overflow_raw = max(0.0, raw_pallets - wh.raw_materials_pallet_locations)
+    overflow_fg = max(0.0, fg_pallets - wh.finished_goods_pallet_locations)
+    overflow_cost = (overflow_raw + overflow_fg) * wh.overflow_pallet_cost_per_day * half_year_days
 
     return {
         "raw_space": raw_space,
         "fg_space": fg_space,
         "tank_yard": tank,
-        "total": raw_space + fg_space + tank,
+        "overflow": overflow_cost,
+        "total": raw_space + fg_space + tank + overflow_cost,
+        "raw_pallets": raw_pallets,
+        "fg_pallets": fg_pallets,
     }
 
 

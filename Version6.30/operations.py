@@ -820,17 +820,25 @@ def calculate_component_needs(product_liters: Dict[str, float]) -> Dict[str, flo
     """
     根据成品产量计算所需组件量。
 
+    BOM ratios 是 per-pack 用量（如 p_orange_pet: 1 pet bottle + 0.060L orange per pack）。
+    因此需先将 liters 转为 packs 再乘以 ratio。
+
     参数:
         product_liters: {product_id: total_liters_produced_over_26_weeks}
 
     返回:
-        {component_id: total_liters_needed}
+        {component_id: total_units_needed}
+        包装组件单位为 pieces，液体组件单位为 liters
     """
     needs: Dict[str, float] = {}
     for pid, liters in product_liters.items():
+        p = PRODUCT_MAP.get(pid)
+        if not p:
+            continue
         recipe = BOM.get(pid, {})
+        packs = liters / p.liters_per_pack  # 升 → 包数
         for comp_id, ratio in recipe.items():
-            needs[comp_id] = needs.get(comp_id, 0.0) + liters * ratio
+            needs[comp_id] = needs.get(comp_id, 0.0) + packs * ratio
     return needs
 
 

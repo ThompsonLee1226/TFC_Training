@@ -99,10 +99,13 @@ def run() -> SimulationResult:
     # 库存状态
     inv_state = supplychain.InventoryState()
 
-    # ── 初始化库存 = 安全库存 + 1 周消耗 ──
+    # ── 初始化库存 = 安全库存 + lead_time 覆盖 ──
     for comp_id, weekly_need in weekly_comp_needs.items():
         ss_weeks = sc_cfg["safety_stock_weeks"].get(comp_id, 2.0)
-        initial = weekly_need * (ss_weeks + 1.0)
+        sid = supplier_for_component.get(comp_id, "")
+        lt_days = purchasing.get_supplier_lead_time(sid) if sid else 7
+        lt_weeks = max(1, round(lt_days / 7))
+        initial = weekly_need * (ss_weeks + lt_weeks)
         if initial > 0:
             inv_state.add_component(comp_id, initial, 0,
                                     _comp_price(comp_id), _comp_shelf_life(comp_id))
@@ -148,6 +151,9 @@ def run() -> SimulationResult:
     total_obsoletes = 0.0
     cum_component_value = 0.0
     cum_fg_value = 0.0
+    # 追踪各组件/成品平均库存量（用于空间成本计算）
+    cum_comp_qty: Dict[str, float] = {}
+    cum_fg_qty: Dict[str, float] = {}
 
     # 销售追踪
     total_fulfilled_liters: Dict[str, float] = {}  # per customer
@@ -249,14 +255,17 @@ def run() -> SimulationResult:
                 total_fulfilled_liters.get(cid, 0.0) + fulfilled_liters_est)
 
         # ── 7) 下单补货 ──
+        # target = 覆盖 lead_time + 安全库存
+        # 当库存低于 target × 0.7 时触发补货
         for comp_id, need in weekly_comp_needs.items():
             current = inv_state.get_component_stock(comp_id, week)
             ss_weeks = sc_cfg["safety_stock_weeks"].get(comp_id, 2.0)
-            target = need * (ss_weeks + 1.0)
+            sid = supplier_for_component.get(comp_id, "")
+            lt_days = purchasing.get_supplier_lead_time(sid) if sid else 7
+            lt_weeks = max(1, round(lt_days / 7))
+            target = need * (ss_weeks + lt_weeks)
             if current < target * 0.7:
                 order_qty = target - current
-                sid = supplier_for_component.get(comp_id, "")
-                lt_days = purchasing.get_supplier_lead_time(sid) if sid else 7
                 place_order(comp_id, order_qty, week, lt_days)
 
         # ── 8) 过期清理 ──
@@ -265,6 +274,12 @@ def run() -> SimulationResult:
         # ── 9) 记录周库存 ──
         cum_component_value += inv_state.component_value()
         cum_fg_value += inv_state.fg_value()
+        for comp_id in weekly_comp_needs:
+            cum_comp_qty[comp_id] = cum_comp_qty.get(comp_id, 0.0) + \
+                inv_state.get_component_stock(comp_id, week)
+        for pid in product_weekly_demand:
+            cum_fg_qty[pid] = cum_fg_qty.get(pid, 0.0) + \
+                inv_state.get_fg_stock(pid, week)
 
     # 清理未到达的订单
     for orders in pending_orders.values():
@@ -273,6 +288,8 @@ def run() -> SimulationResult:
 
     avg_component_value = cum_component_value / WEEKS_PER_ROUND
     avg_fg_value = cum_fg_value / WEEKS_PER_ROUND
+    avg_comp_qty = {cid: q / WEEKS_PER_ROUND for cid, q in cum_comp_qty.items()}
+    avg_fg_qty = {pid: q / WEEKS_PER_ROUND for pid, q in cum_fg_qty.items()}
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 汇总 — 采购成本
@@ -293,7 +310,9 @@ def run() -> SimulationResult:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 汇总 — 仓储 & 库存
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    wh_costs = supplychain.calculate_warehouse_costs(avg_component_value, avg_fg_value)
+    wh_costs = supplychain.calculate_warehouse_costs(
+        avg_component_value, avg_fg_value,
+        avg_comp_qty=avg_comp_qty, avg_fg_qty=avg_fg_qty)
     stock_interest = supplychain.calculate_stock_interest(avg_component_value, avg_fg_value)
 
     # 出库运输
@@ -316,13 +335,19 @@ def run() -> SimulationResult:
                 BASELINE["overhead_water"] +
                 BASELINE["overhead_other"])
 
-    # 估算入出库托盘数和订单行数
-    total_inbound_pallets = sum(
-        liters / 600 for liters in component_needs.values()
-    )
-    total_outbound_pallets = sum(
-        liters / 600 for liters in total_by_cust.values()
-    )
+    # 入出库托盘数：按实际包装密度计算
+    total_inbound_pallets = 0.0
+    for comp_id, qty in component_needs.items():
+        c = supplychain.COMPONENT_MAP.get(comp_id)
+        if c and c.pallet_content:
+            total_inbound_pallets += qty / c.pallet_content
+        # 液体组件不占用托盘（使用罐区）
+
+    total_outbound_pallets = 0.0
+    for (pid, cid), pieces in sales.get_effective_weekly_demand_pieces().items():
+        p = supplychain.PRODUCT_MAP.get(pid)
+        if p and p.per_pallet > 0:
+            total_outbound_pallets += (pieces * WEEKS_PER_ROUND) / p.per_pallet
 
     # 估算订单行数（需在 handling 和 admin 计算前确定）
     num_suppliers = len([s for s in purchasing.SUPPLIERS
@@ -429,7 +454,7 @@ def run() -> SimulationResult:
     pl.production_costs = total_production_cost
     pl.overhead_costs = overhead
     pl.stock_costs_interest = stock_interest * STOCK_INTEREST_FACTOR
-    pl.stock_costs_space = wh_costs["total"] * STOCK_SPACE_FACTOR + tank_yard_cost
+    pl.stock_costs_space = wh_costs["total"] * STOCK_SPACE_FACTOR
     pl.stock_costs_risk = STOCK_RISK_BASELINE + total_obsoletes
     pl.handling_costs = handling_costs["total"] + inspection
     pl.administration_costs = admin_cost
