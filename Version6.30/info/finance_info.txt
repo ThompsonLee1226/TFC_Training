@@ -1,0 +1,162 @@
+Finance report
+A summary of financial results from previous rounds, presented as an Income Statement.
+
+Contracted sales revenue
+The total revenue generated from the sales of finished products based on contract indices agreed with customers.
+
+Calculation: Sales Price × Number of Items Sold × Contract Index
+
+Also includes income from stock ownership in other companies.
+
+Bonus or penalty on contract
+Bonuses and penalties are applied based on supply chain performance. If discounts are high, it is advisable to negotiate more modest agreements or work on improving supply chain efficiency.
+
+Purchase costs
+Total cost of purchased components, including transport costs. Purchase costs tend to be higher when contract indices are high or when there is a high percentage of obsolete stock.
+
+Production costs
+Fixed and variable costs associated with mixers and bottling lines.
+
+Mixer costs include:
+
+Fixed costs
+
+Hourly rate per mixing hour × total number of mixing hours
+
+Bottling line costs include:
+
+Investment and maintenance
+
+Permanent staff and flexible labor costs
+
+Additional costs in case of labor shortages
+
+Cost of good sold
+Accounting classification for direct and indirect costs related to sold products. Includes:
+
+Direct materials costs
+
+Direct labor costs
+
+Allocated overhead costs
+
+Gross margin
+Gross Margin = Total Revenue – Cost of Goods Sold
+
+Overhead costs
+Indirect costs related to operations, including:
+
+Utilities (water, power, etc.)
+
+Supplier management
+
+Components, customers, and finished product management
+
+Stock costs
+Divided into three categories:
+
+(1) Interest Costs:
+
+Expenses for keeping components and finished products in stock, calculated at 15% per annum.
+
+Components valued at purchase cost;
+
+Finished products valued at purchase + production cost.
+
+(2) Space Costs, includes warehousing expenses for:
+
+Raw materials warehouse
+
+Tank yard (can be subcontracted)
+
+Finished goods warehouse
+
+Overflow warehouse (if internal capacity is insufficient)
+
+(3) Risk Costs:
+
+Stock shrinkage, damage, obsolescence.
+
+Higher stock levels increase these risks.
+
+Handling costs
+Costs for permanent staff in raw materials and finished goods warehouses. Includes costs for flexible labor (if permanent capacity is insufficient) and covers raw material inspection. Costs are valued based on the hourly rate of a permanent employee.
+
+Administration costs
+Inbound Orders:
+
+€50 per inbound order.
+
+€10 per inbound order line.
+
+Outbound Orders:
+
+€25 per outbound order.
+
+€2 per outbound order line.
+
+Supplier Relationship Maintenance:
+
+€40,000 per year.
+Distribution costs
+Base price for distribution can be discounted depending on shipment size.
+
+If promised lead time cannot be met due to distance, an express shipping factor is applied. Without the express factor, the standard transport capacity covers 600 km per day.
+
+Base price details are found in DC entity information, and distances between DCs and sales regions are in the Information screen.
+
+Contract costs
+Expenses related to the termination of contracts.
+
+Project costs
+Includes costs for improvement projects such as optimizing bottling line speed and SMED corrective actions.
+
+Interest costs
+Costs related to accounts payable and accounts receivable. Incurred due to payment terms agreements with customers and suppliers.
+
+Calculated at a rate of 15% per annum.
+
+Indirect costs
+Costs that are not directly tied to a specific cost object (e.g., a product or service) but are allocated based on broader operational needs.
+
+Examples:
+
+Management, insurance, taxes, maintenance.
+
+Executive salaries, maintenance personnel wages.
+
+Office supplies (e.g., pencils, pens, paper) purchased in bulk.
+
+Characteristics: * Their precise benefits to a single product are difficult to trace.
+
+Do not vary significantly with production volume.
+
+Sometimes considered fixed costs.
+
+Operating profit
+Earnings after all expenses (selling, administrative, depreciation) are deducted from gross margin.
+
+Investment
+Total investment in buildings, equipment, working capital, and software.
+
+ROI (Return on Investment) = Operating Profit ÷ Investment.
+
+Fixed (including building)
+Investment in The Fresh Connection’s building valued at €2,500,000.
+
+Inventory
+Investments in components and finished product inventory. Components are valued at average purchasing price. Finished products are valued against cost of goods.
+
+Machinery
+Investments include bottling lines and mixers.
+
+Payment terms
+Defines when The Fresh Connection pays suppliers and when it receives payments from customers. Outstanding accounts contribute to investment in payment terms.
+
+Software
+Investment required for software package purchases.
+
+ROI
+A financial measure that compares various investments based on profitability.
+
+For The Fresh Connection, it is Operating Profit as a percentage of total investment during the last half-year.

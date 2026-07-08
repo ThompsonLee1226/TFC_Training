@@ -1,0 +1,432 @@
+Welcome to The Fresh Connection
+Welcome to The Fresh Connection, a struggling fruit juice manufacturer facing critical supply chain challenges. Whether played individually or in a team, participants must make strategic decisions to optimize the supply chain, improve performance, and turn the business around. Ready to take on the challenge?
+
+Roles and responsibilities
+Participants take on leadership roles within the management team of The Fresh Connection. While the game is typically played in groups of four, it can also be played with fewer players or individually. Each participant is assigned a specific role:
+
+Vice President Purchasing
+Vice President Operations
+Vice President Sales
+Vice President Supply Chain
+Regardless of the number of players, success depends on making well-informed, cross-functional decisions. Strategic alignment remains key, whether collaborating with teammates or managing multiple roles independently.
+
+VP Purchasing
+The VP of Purchasing is responsible for sourcing components under the best possible terms from The Fresh Connection’s suppliers. This role involves supplier selection, evaluating their terms and characteristics, and at times making strategic decisions on contract renewals or terminations. The VP of Purchasing plays a critical role in aligning supply strategy with the business strategy and ensures cost-effective procurement, maintaining supplier reliability, and optimizing inbound supply performance.
+
+VP Operations
+The VP of Operations is responsible for managing capacity of production facilities and warehouses. This role oversees work shifts, appropriate staff training, and determines the allocation of space and manpower for inbound and outbound warehouses and tank yard. By maintaining flexibility in production, controlling costs, and ensuring high production schedule adherence, the VP of Operations plays a crucial role in balancing capacity, efficiency and product availability. Strategic decision-making in this area directly impacts overall operational performance and cost management.
+
+VP Sales
+The VP of Sales oversees product sales and customer agreements. This role negotiates key terms such as service levels, shelf life, and promotional pressure while considering customer needs and ensuring favorable conditions for The Fresh Connection. A well-executed sales strategy can lead to higher sales prices, provided that the company delivers on its commitments. Over-promising results in penalties which erodes margins. As sales drive revenue, the VP of Sales plays a critical role in ensuring profitability and market success.
+
+VP Supply Chain Management
+The VP of Supply Chain is the glue that connects all roles, ensuring smooth collaboration between purchasing, operations, and sales. This role aligns the supply chain strategy with the business strategy and optimizes inventory planning and policies to keep operations running efficiently. By strategically deploying safety stock, the VP of Supply Chain mitigates risks from unreliable suppliers, production constraints, and demand volatility ensuring that customer commitments are met and overall performance remains stable.
+
+Strategy
+Each Vice President makes decisions independently, but a well-aligned strategy is essential for achieving the best results.
+
+For example, if the VP of Sales commits to high service levels with customers while the VP of Supply Chain reduces stock levels, this misalignment could lead to stockouts and unfulfilled orders.
+
+Similarly, if the VP of Purchasing negotiates low-cost materials but the VP of Operations cannot maintain production quality as a result, overall performance will suffer.
+
+To avoid conflicting decisions, it is crucial to discuss strategies across all roles, ensuring that all functions are aligned toward the company's success.
+
+Approach
+The simulation reflects the complexity of a real-world company, featuring a diverse range of products, suppliers, and customers. Rather than attempting to gather every detail before making a decision, participants should focus on key strategic areas.
+
+Each Vice President should prioritize the most relevant data for their role. A good starting point is the My Company and functional Role dashboards and the Finance page, which provide targeted insights for effective decision-making.
+
+The Inbox provides additional important scenario information in each round. By focusing on the most critical factors, participants can drive measurable improvements in The Fresh Connection’s performance.
+
+Further reading
+To gain a deeper understanding of The Fresh Connection’s supply chain mechanics, it is recommended to explore the "The Company" section. This provides insights into key factors to consider when making strategic decisions in the game.
+
+The Fresh Connection
+The Fresh Connection is a fruit juice manufacturer based in the Netherlands. While known for its high-quality products, the company has recently faced supply chain challenges due to ad hoc management and a lack of clear strategy.
+
+However, under the leadership of CEO Bob McLaren and the new management team, there is optimism about the company’s future and the potential for operational improvements.
+
+Customers and products
+The Fresh Connection produces a range of juice flavors in several packaging sizes. More details about the product range, components and trade units can be found in the "Information" section. Finished products are delivered to The Fresh Connection’s customers, which include retail companies such as supermarkets. Deliveries take place the day after a customer places an order.
+
+Product storage and shelf life
+The Fresh Connection products are stored on pallets in the finished goods warehouse. They stay there until a delivery is made, or until their shelf life has expired.
+
+The finished goods have, from the time of production, a limited shelf life. The customers claim a significant part of this shelf life, usually 60% to 80%. This leaves The Fresh Connection with an "internal" shelf life of 20% to 40%. In case the shelf life is expired, the product will unfortunately have to be destroyed.
+
+The Fresh Connection does not have its own fleet to deliver to its customer’s distribution centres and instead outsources the transportation to an extremely reliable partner.
+
+The production process
+The production process consists of two key steps: mixing and bottling. The juice is bottled immediately after mixing, with no intermediate storage required. All packaging sizes are initially bottled on the same bottling line. Once bottled, the products are stored in The Fresh Connection’s outbound warehouse.
+
+The components
+A finished product consists of fruit pulp mix, additives, and packaging. The juice formula, made from fruit pulp mix and additives like Vitamin C, gives The Fresh Connection’s products their distinct flavor. This formula has been one of the company’s closely guarded secrets for decades. More details can be found in the Bill of Materials (BoM) within the "Information" section.
+
+The suppliers
+The Fresh Connection operates with a global supplier network, with each component sourced from a different supplier. Packaging materials are typically sourced from local or regional suppliers, while fruit pulp is purchased from fruit traders and producers worldwide.
+
+Each supplier has different available capacity and lead times which depend on geographic location. Several key terms like quality, reliability, delivery window, payment terms, trade units, or transport modes can be negotiated which result in different component pricing from the supplier.
+
+These and other available information require careful evaluation when selecting suppliers and negotiating supply contracts.
+
+Further reading
+For more details on how The Fresh Connection operates, refer to the The mission section, where the expectations for participants and their teams are explained.
+
+Rounds
+The Fresh Connection business game is played in rounds and each round represents six months of decision-making for the company. A round consists of a series of decisions that determine company performance. Once the round is completed by saving your decisions and then calculated, the game progresses to the next round. There is no carryover effect from one round to the next—decisions made in previous rounds do not have a long-term impact on future rounds.
+
+Scores
+The main objective of the business game is to achieve the highest possible Return on Investment (ROI), making The Fresh Connection as profitable as possible. To accomplish this, participants must focus on aligning decisions with a chosen business strategy to:
+
+Maximizing revenue
+Optimizing costs
+Managing investments, such as inventory, payment terms, and machinery
+The overall team performance is ranked based on the ROI score. In addition to the team ROI, each role receives an individual score based on performance within that role. However, individual scores do not affect the team's ranking.
+
+Decisions
+In each round, participants make strategic choices that impact The Fresh Connection’s supply chain. As the rounds progress, additional decision-making options become available, allowing for strategy refinement while also increasing complexity.
+
+At the start of each round, participants begin with the saved strategic choices from the previous round. Every decision involves trade-offs, requiring careful evaluation of potential benefits versus negative consequences. To make informed choices, participants should review available information, including dashboards, reports and inbox before finalizing decisions.
+
+More details on each decision can be found in the InfoCenter using the search function or by selecting the tooltips within the business simulation interface.
+
+Tactics and Strategy
+The Fresh Connection is a strategic and tactical game. The objective is the long-term effects of your decisions on the financial performance of the business. This means that you must think about strategy and aligning your business towards long-term goals (as if your decisions will be in effect over many years).
+
+The negative consequences resulting from poor decisions in a previous round will have little impact on the present round as you will be able to assess and correct any decisions that resulted in negative consequences. Organize the business afresh in every round, reviewing and adjusting decisions to align with your chosen strategy.
+
+Good results from previous rounds are of course important with respect to refining these for making further improvements.
+
+General
+The goal of The Fresh Connection is to achieve the highest possible score measured as Return on Investment (ROI). Throughout the game, multiple performance measures are calculated, including the team measures and individual role measures. The final ranking is determined based on either the highest ROI achieved in the individual rounds or the highest weighted average ROI across all rounds.
+
+Team
+The team score is based on Return on Investment (ROI). More details on ROI calculation can be found in Important Topics > Finance. Team performance is dependent on application of technical and business knowledge, and how well the team engages in communication and collaborative decision-making.
+
+Purchasing
+The VP of Purchasing’s score is a weighted average of the contract index based on terms negotiated with suppliers. Lower contract index result in lower component unit price and a higher score for the VP of Purchasing.
+
+Operations
+The VP of Operations’ score is based on production and warehousing costs. Lower costs relative to revenue lead to a higher score for the VP of Operations.
+
+Sales
+The VP of Sales’ score is determined solely by revenue. Higher contracted sales revenue results in a higher score for the VP of Sales.
+
+Supply Chain Management
+The VP of Supply Chain’s score is based on inventory value. A lower combined component and finished goods inventory value results in a higher score for the VP of Supply Chain.
+
+Changes
+During a round, decisions can be changed as many times as needed without consequences, as only the final saved decisions before the round is calculated will count.
+
+However, there are exceptions when certain conditions are present depending on the set-up:
+
+Terminating a purchasing contract that was agreed upon for multiple rounds will result in a contract cancellation cost. The associated contract value and costs for the remaining duration will remain unchanged.
+
+Decisions related to obtaining additional information using software tools within the simulation or ordering reports from a third party cannot be reversed, as the requested information is provided instantly.
+
+Once a round has been calculated, the results are final, and no further changes can be made.
+
+Save
+Each strategic choice must be saved by selecting the appropriate "Save" button or by finalizing a "Deal" with a supplier or customer.
+
+After clicking the "Save" button, a blue bar will appear at the top of the screen, confirming that the results have been saved.
+
+If the blue bar does not appear, the choices have not been saved. To ensure accuracy, it is recommended to reload the page, which will update the system with the most recent data from the database.
+
+General
+Each team member has four Key Performance Indicators (KPIs). At the start of the simulation, these KPIs are fixed. Participants can view them on the My Company screen, located at the bottom. In a later round, depending on the set-up you can adjust the KPIs with alternate performoance measures.
+
+The team’s KPIs are compared against the pool average, and alerts will notify teams if they underperform on a selected KPI. These alerts are displayed in the text box on the right side of the My Company screen.
+
+Additionally, KPI performance can be reviewed on the results page for each role, where scores are benchmarked against other teams in the pool, excluding the bottom and top 10% of performers. The highest-scoring team’s results are also displayed, allowing for direct performance benchmarking.
+
+ROI (%)
+Return on Investment (ROI) is a measure of financial performance, calculated by dividing the net profit (or benefits) of an investment by its total cost. ROI is expressed as a percentage and is used to evaluate the efficiency and profitability of an investment.
+
+In The Fresh Connection, ROI is measured as Operating Profit as a percentage of Investment over a six-month period.
+
+Rejection rate components (%)
+The Rejection Rate measures the percentage of defective or non-conforming components in the production process. It is calculated as the percentage of rejected components over the total number of purchased components.
+
+Distributed pallets
+The total number of pallets delivered.
+
+Availability for production (%)
+The percentage of components available for production at the time they are required.
+
+Utilization rate bottling lines (%)
+A measure of bottling line efficiency, based on the number of deployed shifts. It is calculated as the percentage of total available time that the bottling line is actively operating (including run time and setup time).
+
+Traditionally, utilization is the ratio of operating time to total available time. It is expressed as a percentage, where 100% utilization means no downtime, and any loss is due to unavailable machines, tools, or workers.
+
+Cube utilization chilled finished goods warehouse (%)
+The average utilization of the total storage capacity in the chilled finished goods warehouse, expressed as a percentage of total pallet space capacity.
+
+Cube utilization, raw materials warehouse (%)
+The average utilization of the total storage capacity in the raw materials warehouse, expressed as a percentage of total pallet space capacity.
+
+Utilization rate, tank yard (%)
+The average utilization of the total storage capacity in the tank yard, expressed as a percentage of total capacity.
+
+Cube utilization, finished goods warehouse (%)
+The average utilization of the total storage capacity in the finished goods warehouse, expressed as a percentage of total pallet space capacity.
+
+Gross margin (product)
+The difference between revenue and cost of goods sold (COGS) per product.
+
+Gross margin (customer)
+The difference between revenue and cost of goods sold (COGS) per customer.
+
+Capacity loss due to changeovers (%)
+The percentage of total available production capacity lost due to time spent on machine changeovers, setups, or adjustments between different products or production runs.
+
+Capacity loss due to breakdowns (%)
+The percentage of total available production capacity lost due to breakdowns and time spent on preventive maintenance.
+
+Cost of goods sold (%)
+Cost of goods sold (COGS) as a percentage of total revenue.
+
+Components obsoletes (%)
+The percentage of total purchased components that have exceeded their shelf-life and have been scrapped due to obsolescence.
+
+Components obsoletes (value)
+The monetary value of total purchased components scrapped due to obsolescence per week.
+
+Finished products obsoletes (%)
+The percentage of total finished goods demanded that did not meet the required shelf-life promise and were scrapped due to obsolescence.
+
+Finished products obsoletes (costs)
+The monetary value of finished products scrapped due to obsolescence from the previous round.
+
+Distribution costs (%)
+Distribution costs as a percentage of revenue.
+
+Flexible labor raw materials warehouse (FTE)
+Number of temporary workers (expressed as a ratio of a Full Time Employed (FTE)) deployed in the raw materials warehouse.
+
+Flexible labor production (FTE)
+Number of temporary workers (expressed as a ratio of a Full Time Employed (FTE)) deployed in production.
+
+Flexible labor finished goods warehouse (FTE)
+Number of temporary workers (expressed as a ratio of a Full Time Employed(FTE)) deployed in the finished goods warehouse.
+
+Forecast reliability components
+Deviation of the forecast of components from the actual demand (mean absolute percentage error)
+
+Forecast reliability finished products
+Deviation of the forecast of demand of finished products from the actual demand (mean absolute percentage error)
+
+Outsourced tank yard (tank-days)
+The average number of tank-days per week outsourced that exceed the available tank-yard capacity
+
+Average number of pallets in stock
+The average number of pallets stored in the finished goods warehouse.
+
+Handling costs (%)
+Handling costs as a percentage of total revenue.
+
+Attained shelf life for customer (%)
+The average shelf-life of finished products delivered to customers, expressed as a percentage of the product's total shelf-life.
+
+This is the average (mean) shelf-life ot the products delivered to the customer. The customer never receives less than the minimum shelf-life promised, and can receive almost 100% shelf-life when products are delivered directly off the production line. Think carefully before promising the average shelf-life as a minimum to the customer, wiithout making significant changes to The Fresh Connection's supply chain and product freshness.
+
+Purchase costs (%)
+Purchase costs as a percentage of total revenue.
+
+Delivery reliability (%)
+A performance metric, expressed as a percentage, that measures how consistently goods and services are delivered on or before the promised time.
+
+Revenue value (per product)
+The revenue value per product.
+
+Revenue per customer
+The revenue value per customer.
+
+Inbound order lines
+The number of incoming order lines received.
+
+Outbound order lines
+The number of outgoing order lines processed.
+
+Overflow raw materials warehouse (%)
+Relative use of overflow storage for raw materials when warehouse capacity is exceeded, expressed as a percentage of the total number of pallet spaces required.
+
+Overflow chilled finished goods warehouse (%)
+Relative use of overflow storage for chilled finished goods when warehouse capacity is exceeded, expressed as a percentage of the total number of pallet spaces required.
+
+Overflow finished goods warehouse (%)
+Relative use of overflow storage for finished goods when warehouse capacity is exceeded, expressed as a percentage of the total number of pallet spaces required.
+
+Overhead costs (%)
+Overhead costs as a percentage of total revenue.
+
+Overtime production (%)
+Measures the percentage of hours worked that exceed scheduled shifts.
+
+Production plan adherence (%)
+Indicates how closely actual production follows the scheduled plan. This metric assesses reliability in meeting planned production targets and expressed as a percentage of production batches completed on achedule over total number of batches scheduled.
+
+Production costs (%)
+Production costs expressed as a percentage of total revenue.
+
+Service level order lines (%)
+The percentage of demand fulfilled expressed as the percentage of order lines delivered On Time In Full (OTIF) fulfilled from the current production schedule or inventory over the total order lines received.
+
+Service level order lines fresh (%)
+The percentage of demand for fresh product fulfilled expressed as a percentage of the order lines fulfilled On Time In Full (OTIF) from the current production schedule or inventory over the toral order lines received.
+
+Service level orders (%)
+The percentage of demand fulfilled expressed as a percentage of the total orders fulfilled On Time In Full (OTIF) from the current production schedule or inventory over the total orders received. Perfect Order Fulfilment.
+
+Service level units (%)
+The percentage of demand for Finished Goods (FG) units fulfilled On Time In Full (OTIF) from the current production schedule or inventory over the total number of FG units ordered.
+
+Service level units fresh (%)
+The percentage of demand for fresh product units fulfilled On Time In Full (OTIF) from the current production schedule or inventory over the total number of units of fresh product ordered.
+
+IBC overflow (%)
+Indicates the percentage of total ordered volume that was required to be pumped into IBCs due to tank yard capacity constraints.
+
+Total capacity loss in production (%)
+Measures the percentage of total available bottling line capacity lost due to changeovers and breakdowns.
+
+Components stock value
+The average stock value of components.
+
+Components stock (weeks)
+The average stock of components expressed in weeks.
+
+Finished products stock value
+The average stock value of finished goods.
+
+Finished products in stock (weeks)
+The average stock of finished goods expressed in weeks.
+
+Stock costs (%)
+The cost of stock-keeping expressed as a percentage of revenue.
+
+Profit (%)
+Profit expressed as a percentage of revenue.
+
+Inbound deliveries
+The number of deliveries received.
+
+Outbound deliveries
+The number of outbound deliveries processed.
+
+Bias finished product (%)
+The average forecast bias for finished products, calculated as the percentage difference between total forecasted and total actual demand. Bias shows the tendency to either over or under forecast which influences The Fresh Connections propensity for generating waste with related costs and ability to meet customer demand without incurring penalties.
+
+Bias Components (%)
+The average bias for components, calculated as the percentage difference between total calculated requirement for components from the forecasted demand of the finished goods and total actual consumption.
+
+On the Shelf Availability per product (%)
+The percentage each product is availabile on retail shelves and is influenced by The Fresh Connections supply chain performance including obsolescence, shortage rule, service delivery reliability and collaboration projects.
+
+On-shelf availability (OSA) is a critical metric for retail stores, representing the extent to which products are available for purchase by customers at any given time. It directly impacts a retail stores customer satisfaction, sales, and overall business performance.
+
+Suppliers can lose retail shelf space allocated for their products if the product OSA is constantly underperforming.
+
+On Shelf Availability (%)
+On Shelf Availability (OSA) measures the availability of finished products on retailer shelves.
+
+OSA is a critical metric for retail stores, representing the extent to which products are available for purchase by customers at any given time. It directly impacts a retail stores customer satisfaction, sales, and overall business performance.
+
+OSA depends on factors such as the retailer, product, and service level delivered to the retailer's distribution center (D/C).
+
+High-end retailers tend to have many products per square meter of shelf space, limiting space for any single product. Their store inventory is often kept in a ""back of store"" area, and shelf replenishment from this stock may not always be timely—particularly for fast-moving items.
+
+Discounters, on the other hand, experience fewer issues since full cases of products are typically displayed on the shelf.
+
+The percentage the product is availabile on retail shelves is influenced by The Fresh Connections supply chain performance including obsolescence, shortage rule, service delivery reliability and collaboration projects.
+
+Economic Inventory (weeks)
+Represents the total finished product inventory available to fulfill future demand, considering:
+
+Current stock levels
+Planned production replenishment
+Outstanding backorders
+Calculation: Economic Inventory = On-hand Inventory + Planned Production – Backorders. Measured in weeks.
+
+Economic inventory components (weeks)
+Represents the total component inventory available for production, considering:
+
+Current stock levels
+Planned supplier deliveries
+Stock required for planned production
+Calculation: Economic Inventory Components = On-hand Component Inventory + Planned Supplier Deliveries – Inventory for Planned Production. Measured in weeks.
+
+Source Cycle Time (weeks)
+The longest time needed for the purchasing process, considering sourcing lead times and order intervals.
+
+Make Cycle Time (weeks)
+The time required for the production process, including frozen periods and production intervals.
+
+Days Sales Outstanding
+Measures the average number of days required to collect revenue from customers after a sale.
+
+A low DSO indicates faster collection of receivables.
+
+A high DSO suggests that products are sold on credit, leading to longer collection times.
+
+Days Payable Outstanding
+Measures the average number of days taken to pay suppliers outstanding bills after a purchase.
+
+Cash to Cash Cycle
+Represents the time taken for an investment (cash outflow) to generate revenue (cash inflow).
+
+Calculated as the time between paying for purchased components and receiving payment for finished products.
+
+A longer Cash to Cash Cycle increases the need for working capital.
+
+Return on Fixed Assets (%)
+The profitability relative to investments in fixed assets (e.g., buildings, equipment, software).
+
+Return on Working Capital (%)
+The profitability relative to working capital investments, including inventories and payment terms.
+
+Overall Equipment Effectiveness
+A key manufacturing performance metric that evaluates:
+
+Availability (planned operating uptime)
+
+Performance (speed of production)
+
+Quality (percentage of defect-free products) OEE quantifies how well manufacturing units perform relative to their scheduled uptime.
+
+Total Effective Equipment Performance
+A broader measure of bottling line utilization, calculated as:
+
+Scheduled Operating Time × Overall Equipment Effectiveness Performance.
+
+It reflects the efficiency of equipment utilization against the maximum available time (365 days × 24 hours per year).
+
+Carbon footprint
+The carbon footprint is a measure for sustainability. It is calculated by dividing the total CO2 emission in kilos by the total number of liters fruit juice that has been sold.
+
+CO2 emission
+The CO2 emission total (kg) that can be allocated to the production of fruit juice by The Fresh Connection
+
+CO2 emission/revenue ratio
+The CO2 emission total (kg) compared to the sales revenue.
+
+Dashboard
+The dashboard per role gives a performance overview for the historical round you select in the timeline. * The trendgraph shows whether your KPIs are changing for the better or for the worse. * The vertical bar shows the performance of your team compared to the competition. * The area of the graph shows the bulk of the teams; 80% of all teams score within this area. Only 10% of the teams performs better and 10% of the teams performs worse.
+
+Trend
+Visualizes the development of KPIs across several rounds.
+
+Your score
+Displays KPI score from the previous round.
+
+Best score
+The best score in the pool represents the highest or lowest value depending on the KPI:
+
+If a higher score is better (e.g., KPI ROI), the highest score in the pool is displayed.
+
+If a lower score is better (e.g., KPI Obsoletes), the lowest score in the pool is displayed.
+
+If it is unclear whether a higher or lower score is preferable, no best score is shown.
+
+Analysis page
+Allows custom queries to review operational data from all previous rounds.

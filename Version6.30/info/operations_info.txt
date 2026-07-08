@@ -1,0 +1,182 @@
+Raw materials inspection
+A raw materials inspection can be implemented to assess the quality of incoming shipments in the inbound warehouse or tank yard. - Inspection is conducted via random sampling. - Defective components are rejected before they can impact production. - This reduces bottling line breakdowns and minimizes waste from substandard finished products. - However, inspections require additional capacity, adding 2 hours per order line to inbound warehouse operations.
+
+Pallet locations
+Packaging components, fruit pulp, and additives delivered in drums or IBCs (Intermediate Bulk Containers) are stored on pallets in The Fresh Connection's inbound warehouse.
+
+The VP of Operations can adjust the warehouse size by modifying the number of pallet locations.
+
+Each additional pallet location costs €200. No fixed costs apply when increasing or decreasing warehouse size per round.
+
+If pallet locations are insufficient, an overflow warehouse is used temporarily.
+
+Cost for overflow storage: €3 per pallet per day.
+
+Outsourcing tank yard
+Since The Fresh Connection’s inbound warehouse cannot store tanks, pulp and additives are pumped directly into an outsourced tank yard upon delivery. Storage partner: PulpStore, which delivers pulp and additives just-in-time for production. No intermediate storage is needed before production starts.
+
+Cost structure:
+
+€25 per tank per day for tank use.
+€10 per delivery for intake handling.
+€100 per delivery to The Fresh Connection, including transport costs.
+Number of permanent employees in the raw material warehouse (FTE)
+The labor force of the raw materials warehouse is primarily engaged in taking in the delivered pallets and making their contents available in good time for production. The intake of deliveries takes 1 hour per order line and 6 minutes per pallet. Making a pallet available for production takes 6 minutes and making a tank available for production costs 12 minutes time.
+
+In addition, the employees lose approximately 4 hours per day in keeping the warehouse and tank yard running.
+
+When there are insufficient pallet locations in the raw materials warehouse, the manpower is also used to move the pallets to and from the overflow warehouse, costing them an average of 6 minutes per pallet.
+
+They are also responsible for filling the IBCs (Intermediate Bulk Containers) if there is insufficient capacity in the tank yard, costing them a further 1 hour per IBC.
+
+Should more manpower be required than is available on any given day, The Fresh Connection will then hire in flexible labor, using a completely automated system. This flexible labor must be given induction training and its productivity per hour is subsequently a little lower than that of the permanent staff. An employee can work 40 hours a week and costs €40,000 per annum, while an hour of flexible labor is rated against a tariff of €42.
+
+Overtime
+If the required personnel capacity exceeds the available labor force, The Fresh Connection hires flexible workers on an hourly basis.
+
+Flexible workers require on-the-job training and are less efficient than permanent employees.
+
+Each flexible worker costs €42 per hour.
+
+Full-time employees (FTEs) provide 40 hours per week at €40,000 per year.
+
+Warehouse space shortages can also increase labor demand due to handling shipments in and out of overflow storage.
+
+Lack of labor capacity can delay production and negatively impact production plan adherence.
+
+Intake time, raw material warehouse (days)
+The intake time refers to the number of days needed for warehouse employees to process incoming pallets.
+
+Pallets require manual handling, while tanker contents are pumped directly into tanks upon arrival.
+
+Increasing intake time reduces peak labor demand, thereby lowering reliance on flexible workers.
+
+However, longer intake times delay the availability of raw materials for production.
+
+Mixer selection
+Mixers are used to blend fruit pulp and additives to create the unique flavors of The Fresh Connection.
+
+There are different mixers available, varying in size and capacity.
+
+Mixers can be changed, added, or removed every round if mixer selection decisions are enabled.
+
+It is crucial to assign each product to a mixer; otherwise, the product will not be produced.
+
+Mixer characteristics
+Each mixer has specific technical and operational characteristics, including:
+
+Technical Minimum – The minimum liters required for proper mixing.
+
+Maximum Capacity – The maximum liters a mixer can process in one run.
+
+Operating Time – The time required to mix one batch.
+
+Cleaning Time – The time needed to clean the mixer before processing another flavor.
+
+Cost Structure – Includes fixed annual costs, per-hour operating costs, and an investment cost.
+
+Impact on Lot Size – A large technical minimum affects batch sizes, determining how many packages are produced per run.
+
+Mixer assignment
+When assigning a finished product to a mixer, consider:
+
+The technical minimum to ensure proper mixing.
+
+Matching product demand with the right mixer size: Assigning a low-demand product to a large mixer may lead to excess production and shelf-life issues.
+
+Always assign a product to a mixer, or it will not be produced.
+
+Bottling line selection
+The bottling lines are responsible for filling packaging with mixed juice. There are different types of lines: efficient lines, flexible lines, and all-round lines. An efficient line has a high filling capacity but longer changeover times, while a flexible line has shorter changeovers but a lower filling capacity. All-round lines provide a balance between efficiency and flexibility.
+
+There are no additional costs for switching bottling lines, but each finished product must be assigned to a bottling line; otherwise, it will not be produced.
+
+Bottling line characteristics
+Each bottling line has specific characteristics, including capacity, staffing needs, sensitivity to breakdowns, and changeover times. When switching from one product to another, a changeover is required. A formula changeover occurs when the packaging remains the same but the juice mixture changes, while a size changeover takes longer because the packaging type or size also changes.
+
+Once a bottling line starts after a changeover, an initial start-up productivity loss is inevitable due to tuning issues. This may cause defects such as partly filled packs or missing caps. However, this loss typically only occurs in the first hour of production, after which the bottling line operates normally.
+
+Bottling line assignation
+Each finished product must be assigned to a bottling line. If a bottling line is withdrawn, all associated finished products must be reassigned; otherwise, they will not be produced.
+
+Number of shifts
+Each bottling line requires a fixed number of operators per shift to ensure that components are supplied, products are processed correctly, and breakdowns or changeovers are handled efficiently. Shift capacity increases as follows: one shift provides 40 hours per week, two shifts 80 hours, three shifts 120 hours, four shifts 144 hours, and five shifts 168 hours.
+
+Each operator costs €40,000 per year. If the required capacity exceeds 168 hours per week, additional production must be outsourced to a trusted bottling partner. While the partner uses similar equipment, outsourcing is2 as expensive as handling production internally.
+
+Overtime
+If additional labor capacity is required beyond the available workforce, The Fresh Connection will hire flexible manpower at a cost of €42 per hour. These workers have less experience operating the bottling lines, making them less efficient than permanent staff. Insufficient work capacity can negatively impact production plan adherence, causing delays before finished products are in stock.
+
+Breakdowns
+Each bottling line is subject to breakdowns caused by external factors such as aging, susceptibility to mechanical failures, and variations in packaging quality. If the packaging does not match the required specifications, additional breakdowns may occur.
+
+Preventive maintenance
+Regular preventive maintenance can reduce breakdowns.
+
+Minimal maintenance requires 1 hours per week per bottling line and reduces breakdown frequency by 30%.
+
+Extensive maintenance requires 3 hours per week per bottling line and results in a greater reduction of 50% in breakdowns.
+
+Additionally, introducing an incoming goods inspection helps identify and reject substandard packaging before it reaches the bottling lines, further reducing breakdowns.
+
+Solving breakdowns training
+Operators can undergo a "Solving Breakdowns" training course, enabling them to handle simple mechanical failures without relying on technical staff. This reduces breakdown duration by 40%. The training is provided to all permanent staff at a cost of €400 per employee.
+
+Optimize bottling line speed
+The bottling line speed, measured in liters per hour, can be increased through an optimization action. This incurs an annual cost of €30,000, increasing production output by 10% liters per hour.
+
+SMED action
+When switching between production runs, changeovers are necessary to prepare components, clean the line, and adjust machine settings.
+
+Formula changeovers (same packaging size, different juice mix) take less time.
+
+Size changeovers (e.g., switching from 1L packs to 1.5L packs) take longer.
+
+Implementing a Single Minute Exchange of Die (SMED) corrective action reduces changeover times by 30%, at an annual cost of €20,000
+
+Inflating PET
+A module can be added to a bottling line to inflate preformed PET bottles (preforms) into full-size PET bottles. With this module, preforms can be purchased from the supplier instead of full-size PET bottles. Preforms take significantly less storage space, specifically a factor of 10, and cost half as much as ready-made PET bottles. The module incurs an additional annual cost of €140,000 and requires an investment of €700,000. If preform PET is selected, it will be sourced from the current PET supplier without additional negotiations.
+
+Pallet locations
+The finished goods warehouse is used to store finished product that is ready for delivery. The costs for the finished goods warehouse are €200 for each pallet location per year. You may be able to decide whether to increase or decrease the pallet locations in the finished goods warehouse in each round. Increasing or decreasing the pallet locations does not involve additional expenditure, and you will always pay the fixed rate for each pallet location every year.
+
+If there is insufficient space in the finished products warehouse, the rest of the pallets will then be temporarily stored in an overflow warehouse. The rate for this overflow warehouse is €3 per pallet location per day.
+
+Permanent employees in finished goods warehouse (FTE)
+The employees in the finished goods warehouse must store the pallets arriving from production. They also pick the customers’ order lines and ready them for end-distribution.
+Storing the pallets coming from production takes 6 minutes in time for every pallet.
+
+The picking takes 10 minutes per order line, 6 minutes per pallet or pallet layer and 3 minutes per outer box.
+
+Should there be insufficient pallet locations available in the finished goods warehouse, the staff will then move the pallets to an overflow warehouse. Moving one pallet from or to the overflow warehouse takes 6 minutes.
+
+Processing a pallet of obsoletes for destruction takes the same time. In addition, the staff spends 4 hours per day cleaning and tidying up the finished goods warehouse.
+
+An employee can work 40 hours a week and costs €40,000 per annum, while an hour of flexible labor costs €42.
+Overtime
+If the required workforce exceeds the available permanent staff, The Fresh Connection hires flexible workers on an hourly basis. These workers have not been previously onboarded and require on-the-job training, making them less efficient than permanent employees. The hourly rate for flexible labor is €42. Limited capacity in the finished goods warehouse can delay customer orders, impacting the service level. A full-time employee (FTE) provides 40 hours of capacity per week and costs €40,000 per year.
+
+Outsourcing the finished goods warehouse
+The finished goods warehouse can be outsourced to either a conventional or fully automated warehouse. In this case, produced pallets are collected daily and stored until end-distribution. If outsourced, The Fresh Connection will not require an internal finished goods warehouse.
+
+The conventional warehouse charges €1.30 per pallet per day, an intake fee of €1.25 per pallet, and a dispatch fee of €3.00 per order line.
+
+The automated warehouse charges €1.50 per pallet per day, an intake fee of €1.00 per pallet, and a dispatch fee of €2.50 per order line.
+
+Destroying obsolete stock costs €2.50 per batch.
+
+If outsourced, The Fresh Connection does not incur space or handling costs for its own finished goods warehouse but instead pays handling fees for storage and shipment at the outsourced location.
+
+MCC
+A Manufacturing Consolidation Center (MCC) combines storage and distribution activities from multiple manufacturers, improving efficiency. These efficiency gains can reduce outbound distribution costs by up to 5%, depending on the synergy between manufacturers. Customers also benefit from MCCs, as consolidation reduces the number of shipments to their distribution centers. Due to this benefit, customers may accept a price increase of up to 0.5% on top of the contract index, depending on the reduction in shipments.
+
+An MCC costs €10,000 per year. Storage costs follow the automated warehouse outsourcing model:
+
+Storage cost: €1.50 per pallet per day.
+
+Inbound pallet fee: €1.00 per pallet.
+
+Outbound order line fee: €2.50 per order.
+
+Customers outsourcing to an MCC no longer bear the cost of maintaining an outgoing warehouse (pallet locations and personnel). However, handling costs are incurred for preparing production pallets for MCC transfer.
+

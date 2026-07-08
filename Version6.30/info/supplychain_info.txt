@@ -1,0 +1,106 @@
+afety stock (weeks)
+Safety stock serves as a buffer to protect against demand fluctuations and supply chain uncertainties.
+
+Safety stock is expressed in forecast weeks of demand.
+
+A higher safety stock reduces the risk of stockouts and improves supply reliability.
+
+However, maintaining high safety stock increases storage costs and capital requirements.
+
+Order quantity (weeks)
+The lot size defines the order quantity for a component in weeks. The actual order quantity may exceed the lot size if dictated by supplier agreements or trade unit constraints.
+
+Lower limit
+For Vendor Managed Inventory (VMI) agreements, a lower limit sets the minimum stock level in weeks. The inventory is managed so that, in theory, stock never falls below this limit. In practice, however, poor forecasts or delivery unreliability may result in stock dropping below the lower limit.
+
+Upper limit
+A maximum stock level in weeks for Vendor Managed Inventory (VMI). The supplier manages inventory to keep stock up to and below this limit, though unforeseen circumstances may still cause overstocking.
+
+Frozen period of production (weeks)
+Each week, The Fresh Connection’s planning division issues a new production plan, determining which finished products will be produced and when. A key aspect of the production plan is the frozen period of production, which represents the number of weeks for which the production schedule is fixed and cannot be changed.
+
+For example, if the frozen period of production is set to two weeks, the schedule for the next two weeks is locked. Beyond this period, the production plan can still be adjusted.
+
+A long frozen period offers advantages, particularly for procurement and production planning:
+
+The component requirements are precisely known, ensuring timely and accurate deliveries.
+
+Production leveling is improved, leading to a more evenly distributed capacity usage.
+
+However, longer frozen periods also reduce flexibility:
+
+If demand suddenly increases, production cannot be adjusted quickly to meet it.
+
+Customer service may be negatively affected if there are unexpected peaks in demand and insufficient stock to fulfill orders.
+
+Balancing production stability with responsiveness is key when determining the appropriate frozen period length.
+
+Function
+The Production Interval Tool helps in setting proper production intervals. It's a dynamic tool which takes into consideration decisions that impact demand and capacity eg:adjusting customer demand or adding an additional shift.
+
+This tool allows adjustments to the production intervals for an upcoming period.
+
+Based on selected settings, the tool calculates theoretical consequences for production capacity and costs.
+
+It enables safe experimentation with production intervals to determine optimal efficiency.
+
+If the settings do not yield the desired results, they can always be adjusted. However, scenario changes in the tool do not directly impact actual production interval decisions. The final scenario you decide upon for production intervals will need to be captured and saved by the Supply Chain VP.
+
+Settings
+The Production Interval Tool takes into account operational decisions made by the VP of Operations and VP of Sales during the round.
+
+Examples:
+
+If the VP of Operations optimizes the speed of the bottling line, operational time will be shorter than it would be otherwise.
+
+If SMED corrective actions are implemented, the changeover time between production runs will also be reduced.
+
+If VP Sales adjusts forecasts, customer demand will adjust accordingly.
+
+These settings help in refining production efficiency and planning, ensuring smooth operations while balancing speed, cost, and resource allocation.
+
+Expected demand
+The expected demand shown in the production interval tool is the forecast created by the VP of Sales.
+
+Utilization rate
+Utilization measures the efficiency of the bottling line, calculated as the percentage of available time that is actually used for production.
+
+Traditionally, it is defined as the ratio of operation time charged (run time plus setup time) to the total available clock time.
+
+Expressed as a percentage, utilization ranges from 0% to 100%, with losses due to unavailability of machines, tools, or workers reducing the percentage.
+
+A higher utilization rate indicates more efficient use of production capacity.
+
+Costs
+Inventory and production-related costs are influenced by cycle stock levels and batch sizes:
+
+Inventory Costs: Larger production batches lead to higher average inventory levels, increasing costs due to storage space and interest.
+
+Changeover Costs: The frequency of changeovers depends on production intervals. Smaller batches result in more frequent changeovers, increasing labor costs and reducing efficiency.
+
+Start-Up Costs: After each changeover, the bottling line requires time to reach full speed, leading to initial losses. Some products may not meet The Fresh Connection’s quality standards and must be discarded, adding to waste and costs.
+
+Disclaimer
+The tool calculates theoretical consequences based on chosen settings. However, real-world scenarios may vary due to factors such as demand fluctuations, capacity peaks, lot sizes, and shelf-life constraints. These external influences should be considered when interpreting the tool’s outputs.
+
+Safety stock (weeks)
+Safety stock acts as a buffer against fluctuations in demand and uncertainties in production, ensuring availability and reducing the risk of stockouts.
+
+It is measured in weeks of forecasted demand for finished products.
+
+A higher safety stock improves service levels but may lead to higher storage costs and increased risk of expired stock, especially for perishable products with limited shelf life.
+
+Managing safety stock is crucial to maintaining cost-efficiency while meeting customer service expectations.
+
+Production interval
+The production interval defines the number of working days between production runs for a specific finished product:
+
+If the production interval is 1, production occurs daily.
+
+If the production interval is 5, production occurs weekly.
+
+If the production interval is 15, production occurs every 3 weeks.
+
+Adjusting this setting can significantly impact operations capacity e.g. changeover frequency and production efficiency. It can also impact service level agreements, inventory related policies and even strategy either positively or negatively.
+
+The Fresh Connection operates on a five day working week.

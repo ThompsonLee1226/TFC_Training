@@ -1,0 +1,156 @@
+General
+Each product and component has a fixed standard price, visible in the Information section. Sales and Purchasing roles cannot negotiate prices directly.
+
+Instead, negotiation occurs through service level agreements (SLAs). A contract index is calculated based on SLA terms: Better SLA terms → Higher contract index → Higher sales price / Lower purchase cost.
+
+The contract index acts as a multiplier to the base price, impacting final costs.
+
+Finished product
+Each product has a fixed basic sales price, which can be found in the Information section. However, the final sales price depends on the contract index, calculated based on the terms of the service level agreement (SLA) negotiated by the VP of Sales. A higher contract index reflects favorable SLA terms, leading to a higher sales price, while a lower index results in a discount.
+
+For instance, a contract index of 1.05 means the customer pays 5% more than the basic price, whereas 0.95 indicates a 5% discount. However, the final price is determined not only by negotiations but also by the actual realization of the agreed SLA terms. If service commitments are not met, customers may demand penalties or discounts.
+
+Raw materials
+Like finished products, components also have a fixed basic purchase price visible in the Information section. The final purchase price is determined by the contract index, which depends on the terms negotiated by the VP of Purchasing.
+
+Suppliers offering relaxed delivery terms may provide a lower contract index (e.g., 0.95 = 5% discount), whereas stricter delivery terms lead to a higher contract index (e.g., 1.05 = 5% premium).
+
+While all suppliers offer the same basic price for a component, their starting contract index may differ, affecting the final purchase cost.
+
+General
+All entities in The Fresh Connection have unchangeable characteristics. For example, components have a fixed number of items per pallet, while suppliers are defined by location and transport costs. This section outlines these entities and their key characteristics.
+
+Customers
+The Fresh Connection serves various customers, including retailers and convenience stores, each with their own delivery requirements.
+
+Finished product
+All finished products have a fixed basic price, but the final sales price depends on customer satisfaction with supply chain performance. Good performance may result in a premium price, while poor performance leads to penalty discounts.
+
+Packaging affects storage efficiency, as items fit into outer boxes, pallets, and layers. Products have a limited shelf life, and customers require delivery within a specified period to ensure they retain the product for a portion of its shelf life. If stock is held too long, it cannot be sold and must be discarded.
+
+Bottling lines
+Each bottling line has specific production capacities, including:
+
+Liters bottled per hour
+
+Changeover times
+
+Breakdown sensitivity
+
+Packaging material tolerances
+
+Operator requirements
+
+Depreciation and maintenance costs
+
+Mixers
+Mixing is constrained by technical capacity limits:
+
+Minimum batch size (to ensure proper mixing)
+
+Maximum capacity (maximum liters per batch)
+
+Run time (time required to mix one batch)
+
+Cleaning time (after each juice flavor is mixed)
+
+Additionally, there are variable costs per mixing hour and fixed costs for depreciation and maintenance.
+
+Raw materials
+All components have a fixed basic price, but the actual purchase price depends on supplier negotiations. Stricter supply terms → Higher price. More flexible supply terms → Lower price
+
+Packaging formats:
+
+Large rolls → Delivered on pallets
+
+Pulp & additives → Supplied in drums, IBCs (Intermediate Bulk Containers), or tank trucks
+
+Drum capacity: 250 liters
+
+IBC capacity: 1,000 liters
+
+Tank truck capacity: 30,000 liters
+
+Shelf Life Considerations:
+
+Fruit pulp has a limited shelf life and must be used before expiration.
+
+Storage beyond its usability in The Fresh Connection's tank yard or raw materials warehouse results in waste and financial loss.
+
+The expiry countdown starts from the supplier’s order date.
+
+Suppliers
+Each supplier has unchangeable characteristics, including:
+
+Location: Impacts transport costs (distant suppliers → higher costs).
+
+Market share: Indicates supplier size and stability in the world market.
+
+Certification: Certified suppliers are generally more reliable in delivery and material quality.
+
+Packaging quality: Poor packaging leads to higher rejection rates and bottling line issues.
+
+Lead time: The period between placing an order and receiving it.
+
+Distant suppliers → Longer lead times
+
+Make-To-Order (MTO) production → Longer production times than Make-To-Stock (MTS).
+
+In-house pulp production → Longer lead times than traders.
+
+Delivery reliability: The % of orders delivered within the agreed lead time. However, this is a promise, and suppliers may not always meet it due to:
+
+Capacity constraints
+
+Peak demand periods
+
+Production inefficiencies
+
+Free capacity: Determines how much additional production a supplier can handle.
+
+Gross capacity: Total production capacity before contracting with The Fresh Connection.
+
+Net capacity: Remaining capacity after fulfilling The Fresh Connection’s contract.
+
+Low net capacity → Higher risk of late deliveries, especially during peak demand.
+
+General
+The Fresh Connection (TFC) computational model converts team decisions into logistical results and individual and team performance scores. While the exact simulation model is not detailed, key interpretation aspects will be covered.
+
+Simulation
+To reduce statistical uncertainty, each round is simulated for 20 years by running 40 iterations of six-month periods. This ensures that team results remain comparable, even when different decisions are made.
+
+Key benefits of this approach:
+
+More accurate logistics data: Numbers like consignments received are averaged over 40 simulations, avoiding misleading whole-number fluctuations.
+
+Reliable graphical reports: Charts and figures reflect consistent patterns, reducing discrepancies between visual data and actual calculations.
+
+By using this method, The Fresh Connection ensures fair comparisons and realistic insights across different teams.
+
+Customer demand
+Customer demand is a critical factor in the simulation model. While base demand parameters are identical for all teams to ensure comparability, each team can influence demand patterns through negotiations with customers.
+
+Key influences on demand:
+
+Sales Volume Rebates: Offering rebates can make demand more volatile and impact purchase behavior.
+
+Promotional Pressure: Increased promotional efforts typically boost demand.
+
+To support stock replenishment, The Fresh Connection uses a weekly forecast model based on demand patterns. While teams cannot adjust the baseline forecast, they can enhance accuracy by negotiating agreements with customers and improving promotional forecasts.
+
+Delivery
+If The Fresh Connection cannot deliver an order line in full, it remains on backorder and will be delivered once stock is available. However, delayed fulfillment lowers the realized service level, which can result in penalties or revenue loss.
+
+Shelf life
+The model tracks when each finished product is produced. Shelf life starts immediately, and products nearing expiry are prioritized for delivery. Stock that exceeds shelf life and cannot be sold is written off as obsolete.
+
+Production planning
+Each team generates a weekly production plan, aiming to spread production orders evenly to minimize capacity peaks. However, bottlenecks like limited production capacity and component shortages may disrupt plan adherence.
+
+Component demand
+Component demand is based on the Bill of Materials and production planning. The system forecasts demand for each component, and if stock runs low, it automatically triggers a replenishment order from the chosen supplier.
+
+Supply
+Suppliers differ in reliability, impacting on-time delivery. Unreliable suppliers may deliver late, leading to uncertainty in supply chains, whereas reliable suppliers consistently deliver on time.
+

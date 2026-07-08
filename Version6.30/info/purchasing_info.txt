@@ -1,0 +1,78 @@
+Supplier selection
+The VP of Purchasing selects suppliers from the supplier market. Unless dual sourcing is available, only one supplier per component type can be selected. Each supplier has unique characteristics, including: Locatio, Free capacity, Certification. The default delivery terms can be negotiated with the selected supplier.
+
+No supplier selected
+If a supplier is not selected—whether by accident or intentionally—the corresponding component will not be delivered. As a result, the finished product that depends on this component cannot be produced or sold, negatively impacting sales and revenue. To avoid this, ensure a supplier is selected for every required component.
+
+Component
+The specific component for which a supplier must be selected.
+
+Price indication
+An estimate of the purchasing price for the selected component.
+
+Certification
+Certified suppliers have better control over their production processes, making them more reliable in meeting agreements and ensuring quality consistency.
+
+Location
+A supplier’s location influences transport costs and lead times. Suppliers located nearby typically offer lower transportation costs and shorter delivery times.
+
+Free capacity
+Indicates the supplier’s available capacity, including any contractual agreements with The Fresh Connection. A lower free capacity may negatively impact supplier reliability.
+
+Negotiations
+The VP of Purchasing can negotiate delivery terms with suppliers, covering aspects like trade unit size, delivery windows, contract duration, payment terms, and review periods. Higher requirements on a supplier will result in a higher contract index and purchase price, while lower requirements can lead to cost savings.
+
+Contract index
+A pricing mechanism that reflects the agreed service level with a supplier. Each component has a fixed base price, and the contract index acts as a multiplier to this price. A higher contract index (e.g., 1.05) increases costs by 5%, while a lower index (e.g., 0.95) results in a 5% discount. The index is influenced by the level of service requirements imposed on the supplier.
+
+Agreed delivery reliability (%)
+The percentage of units that should be delivered on or before the promised time. The supplier's ability to meet this commitment is influenced by free capacity and certification.
+
+Lead time (days)
+The number of days between order placement and delivery. Lead times vary by supplier and location, with suppliers further away typically having longer lead times.
+
+Delivery window
+The timeframe within which delivery must occur. A shorter window (e.g., 4 hours) ensures precise delivery but may come at a premium, while a longer window (e.g., 1 week) provides flexibility, allowing suppliers to deliver earlier or later within the agreed timeframe. Suppliers typically prefer longer delivery windows, as they provide greater operational flexibility.
+
+Transport costs
+Costs associated with moving components from suppliers to The Fresh Connection’s warehouse. Transport costs are influenced by the supplier's location—greater distances result in higher costs. Additionally, transport mode impacts costs; sea shipping is generally cheaper than road transport but may involve longer lead times.
+
+Transport mode
+The method used for shipping components. Transport by boat is cost-effective but has longer lead times, while transport by truck is faster but more expensive. Some suppliers offer transport mode flexibility, allowing negotiation based on cost, speed, and operational requirements.
+
+Trade unit
+Defines the standard unit size for ordering from suppliers and is both the Order Minimum and the Order Multiple. For example, Full Truck Loads (FTLs) arrive as full truck deliveries as a minimum and will always deliver a full truck. Packaging materials are typically shipped on pallets, while liquid components like pulp and additives can be delivered in drums (250-liter content), Intermediate Bulk Containers (IBCs) (1,000-liter content) or tanks (30,000-liter-content). Larger trade units reduce handling and administrative costs, improving contract terms but increase inventory levels and warehouse capacity needs.
+
+Quality
+Component quality can be categorized as “poor,” “middle,” or “high.” Higher quality components are more expensive but can reduce production disruptions. While the quality of sourced components does not impact the final product’s market value, it does affect production efficiency. Poor-quality packaging materials may cause bottling line breakdowns, affecting Production Plan Adherence. Finished products are tested post-production to ensure they meet The Fresh Connection’s standards for aroma, color, and taste. Any product that fails the test is scrapped. Quality control can be enhanced by implementing raw material inspections during component intake.
+
+Free capacity
+The portion of a supplier’s total capacity that is not currently utilized. A supplier with high free capacity is more likely to process The Fresh Connection’s orders on time and meet agreed delivery reliability. Conversely, a supplier with low free capacity may struggle to fulfill orders on time due to reaching its operational limits.
+
+Certification
+Indicates whether a supplier has internal processes in place to control production. Certified suppliers are generally more reliable in both delivery performance and component quality.
+
+Payment terms (weeks)
+The timeframe within which the supplier must be paid. Suppliers typically prefer shorter payment terms.
+
+Payment terms effectuation
+Specifies whether payment terms take effect at the time of ordering or at the time of delivery. This is a characteristic of each supplier.
+
+VMI
+Vendor Managed Inventory (VMI) is a collaboration model where the supplier manages, monitors, and replenishes inventory levels at the customer’s location based on pre-agreed stock levels and expected demand. The supplier is responsible for maintaining stock within an agreed range, overriding the VP of Supply Chain’s decisions on safety stock and lot size. Suppliers often offer discounts under VMI agreements, with the discount amount depending on factors such as stock range flexibility, lead time, and component type.
+
+A VMI project costs €5,000 per year to implement.
+
+Note: VMI cannot be applied to secondary suppliers in a dual-sourcing setup.
+
+Supplier development
+Supplier development is a collaboration initiative aimed at improving supplier performance and facilitating the certification of their production processes. Implementing a supplier development program enhances reliability, component quality, and reduces CO2 emissions. The program costs €60,000 per year per supplier. The success of this initiative depends on the supplier’s importance to The Fresh Connection (in terms of purchased volume) and the duration of the contract. Suppliers are not obliged to accept this collaboration initiative.
+
+Location
+The country where the supplier is based.
+
+Selecting a dual source
+Dual sourcing allows the VP of Purchasing to select a secondary supplier for each component, in addition to the primary supplier. Only one secondary supplier can be selected per component type. To enable dual sourcing, navigate to the supplier market tab and select ""Dual source."" Keep in mind that managing an additional supplier incurs an annual cost of €40,000 per supplier.
+
+Function of a dual source
+If dual sourcing is enabled, replenishment orders are issued to the secondary supplier if The Fresh Connection risks running out of stock. The order size in such cases is one week of planned demand for the component. Dual sourcing serves as a risk mitigation strategy to reduce supply chain disruptions.
