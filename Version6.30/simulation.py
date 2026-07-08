@@ -218,11 +218,8 @@ def run() -> SimulationResult:
 
     admin = BASELINE["admin_cost"]
 
+    # Baseline 取自 Round 3（SMED=True, training=Yes），已含全部项目费用
     project = BASELINE["project_cost"]
-    if operations._cfg("bottling.smed_action", False):
-        project += 6000
-    if operations._cfg("bottling.general_settings.solve_breakdowns_training", "No") == "Yes":
-        project += 6000
 
     interest_ar_ap = BASELINE["interest_ar_ap"]
 
