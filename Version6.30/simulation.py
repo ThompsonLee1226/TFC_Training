@@ -190,14 +190,29 @@ def run() -> SimulationResult:
         actual_produced = prod_result.actual_liters
         total_produced_liters += actual_produced
 
-        # ── 4) 消耗组件（按实际产量反推）──
-        # 实际产量与计划的比例
-        if sum(product_weekly_demand.values()) > 0 and actual_produced > 0:
-            # 按实际产量比例缩放组件消耗
-            scale = actual_produced / sum(product_weekly_demand.values())
-            for comp_id, need in weekly_comp_needs.items():
-                actual_need = need * min(scale, 1.0)
-                inv_state.consume_component(comp_id, actual_need, week)
+        # ── 4) 消耗组件（按各产品实际产量 × BOM 反推）──
+        # 使用 ProductionResult.actual_by_product 获取分产品产量，
+        # 避免统一缩放导致的不精确（per-product tracking from operations.py B8 fix）
+        if hasattr(prod_result, 'actual_by_product') and prod_result.actual_by_product:
+            for pid, actual_pid_liters in prod_result.actual_by_product.items():
+                if actual_pid_liters <= 0:
+                    continue
+                recipe = operations.BOM.get(pid, {})
+                scale = actual_pid_liters / max(product_weekly_demand.get(pid, 1.0), 1.0)
+                for comp_id, ratio in recipe.items():
+                    weekly_need = weekly_comp_needs.get(comp_id, 0.0)
+                    # 按该产品在周需求中的占比反推该产品对组件的消耗
+                    pid_share = (product_weekly_demand.get(pid, 0.0) * ratio /
+                                 max(weekly_need, 0.001)) if weekly_need > 0 else 0.0
+                    actual_comp_use = weekly_need * pid_share * min(scale, 1.0)
+                    inv_state.consume_component(comp_id, actual_comp_use, week)
+        else:
+            # 回退：统一缩放（兼容旧版 ProductionResult）
+            if sum(product_weekly_demand.values()) > 0 and actual_produced > 0:
+                scale = actual_produced / sum(product_weekly_demand.values())
+                for comp_id, need in weekly_comp_needs.items():
+                    actual_need = need * min(scale, 1.0)
+                    inv_state.consume_component(comp_id, actual_need, week)
 
         # ── 5) 成品入库 ──
         if actual_produced > 0 and total_production_cost > 0:
@@ -206,15 +221,14 @@ def run() -> SimulationResult:
         else:
             cost_per_liter = 0.0
 
-        for pid, weekly_liters in product_weekly_demand.items():
-            p = supplychain.PRODUCT_MAP.get(pid)
-            if not p:
-                continue
-            # 按比例分配实际产量
-            actual_pid_liters = weekly_liters * (actual_produced / sum(product_weekly_demand.values())) \
-                if sum(product_weekly_demand.values()) > 0 else 0.0
-            if actual_pid_liters > 0:
-                # 成品成本 = 物料成本 + 生产成本
+        # 使用 ProductionResult.actual_by_product 获取精确的分产品产量
+        if hasattr(prod_result, 'actual_by_product') and prod_result.actual_by_product:
+            for pid, actual_pid_liters in prod_result.actual_by_product.items():
+                if actual_pid_liters <= 0:
+                    continue
+                p = supplychain.PRODUCT_MAP.get(pid)
+                if not p:
+                    continue
                 recipe = operations.BOM.get(pid, {})
                 material_cost = sum(
                     ratio * _comp_price(cid)
@@ -223,6 +237,23 @@ def run() -> SimulationResult:
                 total_cost = material_cost + cost_per_liter
                 inv_state.add_fg(pid, actual_pid_liters, week,
                                  total_cost, p.shelf_life_weeks)
+        else:
+            # 回退：统一缩放（兼容旧版 ProductionResult）
+            for pid, weekly_liters in product_weekly_demand.items():
+                p = supplychain.PRODUCT_MAP.get(pid)
+                if not p:
+                    continue
+                actual_pid_liters = weekly_liters * (actual_produced / sum(product_weekly_demand.values())) \
+                    if sum(product_weekly_demand.values()) > 0 else 0.0
+                if actual_pid_liters > 0:
+                    recipe = operations.BOM.get(pid, {})
+                    material_cost = sum(
+                        ratio * _comp_price(cid)
+                        for cid, ratio in recipe.items()
+                    )
+                    total_cost = material_cost + cost_per_liter
+                    inv_state.add_fg(pid, actual_pid_liters, week,
+                                     total_cost, p.shelf_life_weeks)
 
         # ── 6) 日级销售仿真（含成品库存约束）──
         # 构建当前成品库存快照
@@ -310,10 +341,40 @@ def run() -> SimulationResult:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 汇总 — 仓储 & 库存
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 从 OPERATIONS_CONFIG 读取用户配置的仓库容量
+    ops_inbound = operations.OPERATIONS_CONFIG.get("inbound", {}).get("raw_materials_warehouse", {})
+    ops_outbound = operations.OPERATIONS_CONFIG.get("outbound", {}).get("finished_goods_warehouse", {})
+    raw_pallet_capacity = ops_inbound.get("pallet_locations", None)
+    fg_pallet_capacity = ops_outbound.get("pallet_locations", None)
+
     wh_costs = supplychain.calculate_warehouse_costs(
         avg_component_value, avg_fg_value,
-        avg_comp_qty=avg_comp_qty, avg_fg_qty=avg_fg_qty)
+        avg_comp_qty=avg_comp_qty, avg_fg_qty=avg_fg_qty,
+        raw_pallet_capacity=raw_pallet_capacity,
+        fg_pallet_capacity=fg_pallet_capacity)
     stock_interest = supplychain.calculate_stock_interest(avg_component_value, avg_fg_value)
+
+    # 成品仓库外包：使用 operations.py 外包费率替代自营 FG 空间成本
+    fg_outsource = ops_outbound.get("outsource_type", "None")
+    if fg_outsource != "None":
+        fg_pallets_avg = wh_costs.get("fg_pallets", 0.0)
+        # 估算日出库托盘数 = 周均 / 5 工作日
+        daily_fg_pallets = fg_pallets_avg / (WEEKS_PER_ROUND * 5) if fg_pallets_avg > 0 else 0.0
+        num_ol_est = sum(
+            1 for (_, _), p in sales.get_effective_weekly_demand_pieces().items()
+            if p > 0
+        ) * WEEKS_PER_ROUND
+        fg_outsource_cost = operations.calculate_warehouse_cost_finished_goods(
+            avg_daily_pallets=daily_fg_pallets,
+            num_outbound_order_lines=num_ol_est,
+            num_obsolete_batches=0)
+        # 外包费替代自营 FG 空间成本
+        wh_costs["fg_outsource"] = fg_outsource_cost
+        wh_costs["fg_space"] = 0.0
+        wh_costs["total"] = (wh_costs["raw_space"] + fg_outsource_cost +
+                             wh_costs["tank_yard"] + wh_costs["overflow"])
+    else:
+        wh_costs["fg_outsource"] = 0.0
 
     # 出库运输
     weekly_by_cust = sales.weekly_demand_by_customer()

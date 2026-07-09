@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 import math
 import random
 
-from entities import (FACILITY, FacilityConfig, PRODUCT_MAP, BOM,
+from entities import (FACILITY, FacilityConfig, PRODUCT_MAP, BOM, COMPONENT_MAP,
                       MixerSpec, BottlingLineSpec,
                       MIXER_SPECS, BOTTLING_LINE_SPECS, SUPPLIERS)
 
@@ -203,13 +203,21 @@ class DailyResult:
     mixing_hours: float = 0.0
     bottling_hours: float = 0.0
     last_product: Optional[str] = None          # 当天最后生产的产品（跨天换型判断）
+    # 分产品实际产量（用于 simulation.py 成品入库，避免统一缩放）
+    actual_by_product: Dict[str, float] = field(default_factory=dict)
     # 成本明细（对齐游戏 P&L：Bottling fixed + Permanent + Flexible + Mixer fixed + Mixer variable）
     mixing_fixed_cost: float = 0.0
     mixing_variable_cost: float = 0.0
     bottling_fixed_cost: float = 0.0
-    bottling_variable_cost: float = 0.0    # Flexible manpower (整条线, 42€/h)
+    bottling_variable_cost: float = 0.0    # Flexible manpower (仅 OT/超时, 42€/h)
     permanent_labor_cost: float = 0.0       # Permanent employees (操作员基本工资, 固定)
     labor_cost: float = 0.0                 # 保留兼容，始终为 0
+    # 因 batch_min 约束导致的超额生产（升）
+    excess_from_batch_min: float = 0.0
+    # 当天换型次数（用于启动产能损失计算）
+    num_changeovers: int = 0
+    # 启动产能损失（升）— 换型后首小时产生的缺陷品
+    startup_loss_liters: float = 0.0
 
 
 @dataclass
@@ -234,6 +242,10 @@ class ProductionResult:
     outsourced_cost: float = 0.0
     daily_results: List[DailyResult] = field(default_factory=list)
     weekend_overtime_days: int = 0
+    # 分产品实际产量 {product_id: total_liters}（用于 simulation.py 成品入库）
+    actual_by_product: Dict[str, float] = field(default_factory=dict)
+    # 因 batch_min 约束导致的超额生产总量
+    excess_from_batch_min: float = 0.0
 
 
 class ProductionSimulator:
@@ -287,16 +299,28 @@ class ProductionSimulator:
 
     def _classify_changeover(self, prev_pid: Optional[str], curr_pid: str,
                               line_spec: BottlingLineSpec) -> float:
-        """判断换型类型，返回所需小时数。同产品或首次生产返回 0。"""
+        """判断换型类型，返回所需小时数。同产品或首次生产返回 0。
+
+        换型规则（对齐 game operations_info.txt）：
+          - 仅口味变化 → formula_changeover (清洗混合器)
+          - 仅尺寸变化 → size_changeover (调整灌装线)
+          - 口味+尺寸同时变化 → size_changeover (两者取长；所有产线 size ≥ formula)
+        """
         if prev_pid is None or prev_pid == curr_pid:
             return 0.0
 
         prev_f, curr_f = self._extract_flavor(prev_pid), self._extract_flavor(curr_pid)
         prev_s, curr_s = self._extract_size(prev_pid), self._extract_size(curr_pid)
 
-        if curr_f != prev_f:
+        flavor_changed = (curr_f != prev_f)
+        size_changed = (curr_s != prev_s)
+
+        if flavor_changed and size_changed:
+            # 两者同时变化：取较长的换型时间（所有灌装线 size ≥ formula）
+            return line_spec.size_changeover_hours
+        elif flavor_changed:
             return line_spec.formula_changeover_hours
-        elif curr_s != prev_s:
+        elif size_changed:
             return line_spec.size_changeover_hours
         return 0.0
 
@@ -305,20 +329,30 @@ class ProductionSimulator:
 
         每天独立概率判断。
         基准故障概率 (None): 30%/天
-        预防维护: A little → -30%故障, A lot → -50%故障 (per operations_info.txt:116-118)
-        故障排除培训: -40%故障持续时间 (per operations_info.txt:123)
+        预防维护: A little → -30%故障概率, A lot → -50%故障概率 (per operations_info.txt:116-118)
+        故障排除培训: -40%故障持续时间 (per operations_info.txt:123: "reduces breakdown duration by 40%")
+
+        来料检验: 额外降低故障概率 (per operations_info.txt:2-5: 拒收缺陷包装 → 减少灌装线故障)
         """
         pm = _cfg("bottling.general_settings.preventive_maintenance", "A little")
         baseline_prob = 0.30
         reduction = {"None": 0.0, "A little": 0.30, "A lot": 0.50}.get(pm, 0.30)
         daily_prob = baseline_prob * (1.0 - reduction)
 
-        training = _cfg("bottling.general_settings.solve_breakdowns_training", "No")
-        if training == "Yes":
-            daily_prob *= 0.6  # -40% per doc
+        # 来料检验：检查包装材料供应商是否启用检验，拒收缺陷品 → 减少故障
+        # (per operations_info.txt:2-5, purchasing_info.txt:47-48)
+        inspection = _cfg("inbound.raw_materials_inspection", {})
+        if inspection.get("Mono Packaging Materials", False) or \
+           inspection.get("Philip Jones Plastics", False):
+            daily_prob *= 0.80  # 包装检验额外降低 20% 故障概率
 
         if self.rng.random() < daily_prob:
-            return round(self.rng.uniform(1.0, 4.0), 2)  # 停机 1-4 小时
+            downtime = self.rng.uniform(1.0, 4.0)
+            # 故障排除培训缩短持续时间 (per operations_info.txt:123)
+            training = _cfg("bottling.general_settings.solve_breakdowns_training", "No")
+            if training == "Yes":
+                downtime *= 0.6  # -40% duration
+            return round(downtime, 2)
         return 0.0
 
     # ── 日级模拟核心 ──────────────────────────────────────
@@ -339,8 +373,18 @@ class ProductionSimulator:
         mixer_spec = get_mixer_spec()
         line_spec = get_bottling_line_spec()
         result = DailyResult(day=day)
+        days_per_year = 260.0  # 5d × 52w
+        shifts = _cfg("bottling.shifts_per_week", 2)
+        num_ops = line_spec.num_operators
 
         if not product_targets:
+            # 无生产计划：仍须支付固定成本（折旧+永久员工工资）
+            result.mixing_fixed_cost = mixer_spec.fixed_cost_annual / days_per_year
+            result.bottling_fixed_cost = line_spec.fixed_cost_annual / days_per_year
+            total_staff = num_ops * shifts + self.ADDITIONAL_PRODUCTION_STAFF
+            result.permanent_labor_cost = (
+                total_staff * line_spec.operator_cost_annual / days_per_year
+            )
             return result
 
         # ── 1) 故障检查（离散事件，每天独立判断）──
@@ -349,20 +393,28 @@ class ProductionSimulator:
 
         # ── 2) 换型时间（跨天 + 天内）──
         changeover = 0.0
+        num_changeovers = 0
         pids = list(product_targets.keys())
 
         # 跨天换型：当天第一个产品 vs 前一天最后一个产品
-        changeover += self._classify_changeover(self._last_product, pids[0], line_spec)
+        cross = self._classify_changeover(self._last_product, pids[0], line_spec)
+        if cross > 0:
+            num_changeovers += 1
+        changeover += cross
 
         # 天内换型：产品间切换
         for i in range(1, len(pids)):
-            changeover += self._classify_changeover(pids[i - 1], pids[i], line_spec)
+            co = self._classify_changeover(pids[i - 1], pids[i], line_spec)
+            if co > 0:
+                num_changeovers += 1
+            changeover += co
 
         # SMED action → -30% (per operations_info.txt: "reduces changeover times by 30%")
         if _cfg("bottling.smed_action", False):
             changeover *= 0.7
 
         result.changeover_hours = changeover
+        result.num_changeovers = num_changeovers
 
         # ── 3) Bottling 产能 ──
         effective_hours = max(0.0, day_hours - changeover - breakdown)
@@ -382,13 +434,52 @@ class ProductionSimulator:
         if capacity_per_hour > 0 and actual > 0:
             result.bottling_hours = actual / capacity_per_hour
 
-        # ── 4) Mixing 时间 ──
-        total_mix_hours = 0.0
-        last_flavor = None
+        # ── 3b) batch_min 约束 & 分产品产量追踪 ──
+        # 混合器有技术最小批量（per entity_info.txt:49: "Minimum batch size"）。
+        # 若某产品日产量 ÷ 批次数 < batch_min，提升至 batch_min × 批次数。
         scale = actual / total_target if total_target > 0 else 0.0
+        product_scaled: Dict[str, float] = {}
+        excess_batch_min = 0.0
 
         for pid, liters in product_targets.items():
             scaled = liters * scale
+            if scaled <= 0:
+                product_scaled[pid] = 0.0
+                continue
+            batches_needed = max(1, math.ceil(scaled / mixer_spec.batch_max_liters))
+            per_batch = scaled / batches_needed
+            if per_batch < mixer_spec.batch_min_liters:
+                adjusted = batches_needed * mixer_spec.batch_min_liters
+                excess_batch_min += adjusted - scaled
+                product_scaled[pid] = adjusted
+            else:
+                product_scaled[pid] = scaled
+
+        if excess_batch_min > 0:
+            actual += excess_batch_min
+            result.actual_liters = actual
+            if capacity_per_hour > 0:
+                result.bottling_hours = actual / capacity_per_hour
+            result.shortfall_liters = max(0.0, total_target - actual)
+            # 全部产品等比缩放以匹配新的 actual（超额生产部分按比例分配）
+            new_total = sum(product_scaled.values())
+            if new_total > 0:
+                for pid in product_scaled:
+                    product_scaled[pid] *= actual / new_total
+
+        result.excess_from_batch_min = excess_batch_min
+
+        # 分产品实际产量
+        for pid in product_targets:
+            result.actual_by_product[pid] = product_scaled.get(pid, 0.0)
+
+        # ── 4) Mixing 时间 ──
+        # 使用 product_scaled（已含 batch_min 调整）计算批次数
+        total_mix_hours = 0.0
+        last_flavor = None
+
+        for pid, liters in product_targets.items():
+            scaled = product_scaled.get(pid, 0.0)
             if scaled <= 0:
                 continue
             # 向上取整批次数（ceil 避免整数倍时多算一批）
@@ -417,12 +508,16 @@ class ProductionSimulator:
             result.bottling_hours = new_actual / capacity_per_hour
             result.shortfall_liters = result.planned_liters - new_actual
 
-            # 重新计算混合时间（随产量等比缩减，批次数不变或减少）
+            # 等比缩减分产品产量 & 更新 actual_by_product
+            for pid in product_scaled:
+                product_scaled[pid] *= scale_mix
+                result.actual_by_product[pid] = product_scaled[pid]
+
+            # 重新计算混合时间（使用已缩减的 product_scaled）
             total_mix_hours = 0.0
             last_flavor = None
-            new_scale = new_actual / total_target if total_target > 0 else 0.0
             for pid, liters in product_targets.items():
-                scaled = liters * new_scale
+                scaled = product_scaled.get(pid, 0.0)
                 if scaled <= 0:
                     continue
                 batches_needed = max(1, math.ceil(scaled / mixer_spec.batch_max_liters))
@@ -434,17 +529,38 @@ class ProductionSimulator:
                     last_flavor = flavor
             result.mixing_hours = total_mix_hours
 
+        # ── 4c) 启动产能损失（per operations_info.txt:97-98）──
+        # "Once a bottling line starts after a changeover, an initial start-up
+        #  productivity loss is inevitable... this loss typically only occurs
+        #  in the first hour of production."
+        # 每次换型后首小时产生缺陷品 = capacity/hour × 1h × loss_pct
+        if num_changeovers > 0 and result.actual_liters > 0.001:
+            loss_per_co = capacity_per_hour * 1.0 * (line_spec.startup_productivity_loss_pct / 100.0)
+            startup_loss = min(num_changeovers * loss_per_co, result.actual_liters * 0.5)
+            result.startup_loss_liters = startup_loss
+            result.actual_liters -= startup_loss
+            if capacity_per_hour > 0:
+                result.bottling_hours = result.actual_liters / capacity_per_hour
+            # 等比缩减分产品产量
+            if result.actual_liters > 0:
+                scale_sl = result.actual_liters / (result.actual_liters + startup_loss)
+                for pid in product_scaled:
+                    product_scaled[pid] *= scale_sl
+                    result.actual_by_product[pid] = product_scaled[pid]
+
         # ── 5) 成本计算 ──
         # 对齐游戏 P&L 结构（固定成本仅工作日收取，OT 天不收）：
         #   Bottling fixed    = 设备折旧 (工作日)
-        #   Permanent employees = 操作员基本工资 (工作日)
-        #   Flexible manpower  = 灌装工时 × 42€/h (整条线费率)
+        #   Permanent employees = 操作员基本工资 × 班次数 (工作日)
+        #   Flexible manpower  = 仅 OT/超时 时计费: 灌装工时 × 42€/h（per ops_info:35-39）
+        #                       工作日永久员工已覆盖排班产能，不额外收取灵活工费用
         #   Mixer fixed        = 混合器折旧 (工作日)
         #   Mixer variable     = 混合工时 × 135€/h
-        #   周末加班 → variable cost × 1.5, 不收 fixed
+        #   周末加班 → variable cost × 1.5, 不收 fixed, 全部按灵活工计费
         days_per_year = 260.0  # 5d × 52w
         ot_mult = self.WEEKEND_OVERTIME_MULTIPLIER if is_overtime else 1.0
         num_ops = line_spec.num_operators
+        shifts = _cfg("bottling.shifts_per_week", 2)
 
         # 混合成本
         if not is_overtime:
@@ -458,18 +574,21 @@ class ProductionSimulator:
         # 灌装成本
         if not is_overtime:
             result.bottling_fixed_cost = line_spec.fixed_cost_annual / days_per_year
-            # Permanent employees: 灌装操作员 + 额外生产人员（混合器、主管、质检等）
-            total_staff = num_ops + self.ADDITIONAL_PRODUCTION_STAFF
+            # Permanent employees: 灌装操作员 × 班次 + 额外生产人员（混合器、主管、质检等）
+            # per ops_info:104 — "Each bottling line requires a fixed number of operators per shift"
+            total_staff = num_ops * shifts + self.ADDITIONAL_PRODUCTION_STAFF
             result.permanent_labor_cost = (
                 total_staff * line_spec.operator_cost_annual / days_per_year
             )
+            # 工作日：永久员工覆盖排班产能，不产生灵活工费用
+            result.bottling_variable_cost = 0.0
         else:
             result.bottling_fixed_cost = 0.0
             result.permanent_labor_cost = 0.0
-        # Flexible manpower: 42€/h 是整条产线费率（游戏 P&L 中 Flexible manpower 项）
-        result.bottling_variable_cost = (
-            result.bottling_hours * line_spec.flexible_labor_per_hour * ot_mult
-        )
+            # 周末/OT：全部按灵活工计费 (€42/h × 1.5 OT multiplier)
+            result.bottling_variable_cost = (
+                result.bottling_hours * line_spec.flexible_labor_per_hour * ot_mult
+            )
 
         # labor_cost 保持为 0（兼容旧字段）
         result.labor_cost = 0.0
@@ -566,49 +685,95 @@ class ProductionSimulator:
             raw_days = {f: 1 for f, _ in groups}
 
         # ── 4. 构建 daily_targets（口味组内产品也按需求占比分配天数）──
-        # 核心优化：当天数 ≥ 产品数时，每天只生产 1 个产品，消除天内尺寸换型
+        # 核心优化：当天数 ≥ 产品数时，每天只生产 1 个产品，消除天内尺寸换型。
+        # 但周需求 < batch_min 的产品不得独占一天（否则 simulate_day 会超产至 batch_min）。
         daily_targets: List[Dict[str, float]] = []
+        mixer_spec = get_mixer_spec()
+        batch_min = mixer_spec.batch_min_liters
+
         for flavor, pids in groups:
             group_days = raw_days.get(flavor, 1)
             group_total = group_demand.get(flavor, 1.0)
 
-            if group_days >= len(pids):
-                # 天数足够 → 每个产品独立分配天数，每天只生产 1 个产品
+            # 拆分"可独立排产"和"必须共享天数"的产品
+            viable_pids = [p for p in pids if batch_map.get(p, 0.0) >= batch_min]
+            small_pids = [p for p in pids if batch_map.get(p, 0.0) < batch_min]
+
+            # 所有产品都低于 batch_min → 全部走共享模式
+            if not viable_pids:
+                viable_pids, small_pids = small_pids, []
+
+            if group_days >= len(viable_pids) and viable_pids:
+                # 天数足够 → 每个可独立产品分配天数，每天只生产 1 个产品
+                small_total = sum(batch_map.get(p, 0.0) for p in small_pids)
+                # 先给 viable 产品分配天数
+                viable_total = sum(batch_map.get(p, 0.0) for p in viable_pids)
+                # 留出 small 产品需要的天数（至少 1 天如果 small_total > 0）
+                small_days = 1 if small_total > 0 else 0
+                available_days = group_days - small_days
+
+                if available_days <= 0:
+                    # 天数不足以独立排产，回退到共享模式
+                    all_pids = viable_pids + small_pids
+                    for _ in range(group_days):
+                        day: Dict[str, float] = {}
+                        for pid in all_pids:
+                            day[pid] = batch_map.get(pid, 0.0) / group_days
+                        daily_targets.append(day)
+                    continue
+
                 prod_quotas = {}
-                for pid in pids:
+                for pid in viable_pids:
                     d = batch_map.get(pid, 0.0)
-                    prod_quotas[pid] = (d / group_total) * group_days if group_total > 0 else 1.0
+                    prod_quotas[pid] = (d / max(viable_total, 1.0)) * available_days if viable_total > 0 else 1.0
 
                 prod_days = {}
-                for pid in pids:
+                for pid in viable_pids:
                     prod_days[pid] = max(1, int(prod_quotas[pid]))
 
-                # 调整至恰好 group_days 天
+                # 调整至恰好 available_days 天
                 total_pd = sum(prod_days.values())
-                by_frac_p = sorted(pids, key=lambda p: prod_quotas[p] % 1.0)
-                while total_pd > group_days:
+                by_frac_p = sorted(viable_pids, key=lambda p: prod_quotas[p] % 1.0)
+                while total_pd > available_days:
                     for p in by_frac_p:
                         if prod_days[p] > 1:
                             prod_days[p] -= 1
                             total_pd -= 1
                             break
-                while total_pd < group_days:
+                while total_pd < available_days:
                     for p in reversed(by_frac_p):
                         prod_days[p] += 1
                         total_pd += 1
                         break
 
-                # 按 production_sequence 顺序输出（pids 已按 seq 排序）
-                for pid in pids:
+                # 输出 viable 产品的独立天
+                for pid in viable_pids:
                     n_days = prod_days.get(pid, 1)
                     daily_liters = batch_map.get(pid, 0.0) / n_days
                     for _ in range(n_days):
                         daily_targets.append({pid: daily_liters})
+
+                # small 产品：按需求比例附加到已有天的末尾（与当天产品同口味，仅尺寸换型）
+                if small_total > 0 and small_days > 0:
+                    # 把 small 产品分配到 viable 的最后一天（或多天均分）
+                    for _ in range(small_days):
+                        day_idx = len(daily_targets) - small_days
+                        if day_idx < 0:
+                            day_idx = 0
+                        # 将 small 产品附加到该天
+                        target_day = daily_targets[day_idx]
+                        for pid in small_pids:
+                            sp_liters = batch_map.get(pid, 0.0) / small_days
+                            if pid in target_day:
+                                target_day[pid] = target_day[pid] + sp_liters
+                            else:
+                                target_day[pid] = sp_liters
             else:
                 # 天数不足：每天包含多个产品（回退到均分逻辑）
+                all_pids = viable_pids + small_pids
                 for _ in range(group_days):
                     day: Dict[str, float] = {}
-                    for pid in pids:
+                    for pid in all_pids:
                         day[pid] = batch_map.get(pid, 0.0) / group_days
                     daily_targets.append(day)
 
@@ -623,7 +788,10 @@ class ProductionSimulator:
     def _check_component_availability(daily_targets: List[Dict[str, float]],
                                        component_stock: Dict[str, float]
                                        ) -> List[Dict[str, float]]:
-        """检查组件库存是否足够支撑计划产量，不足则等比缩减。
+        """检查组件库存是否足够支撑计划产量，不足则按产品各自缩减。
+
+        每个产品独立检查其 BOM 中各组件的库存约束，
+        仅缩减受影响的产品的产量（非全局统一缩放）。
 
         Args:
             daily_targets: 每天的产品目标 [{pid: liters}, ...]
@@ -635,42 +803,48 @@ class ProductionSimulator:
         if not component_stock:
             return daily_targets
 
-        # 汇总一周总需求
+        # 汇总一周各产品总需求
         total_demand: Dict[str, float] = {}
         for day in daily_targets:
             for pid, liters in day.items():
                 total_demand[pid] = total_demand.get(pid, 0.0) + liters
 
-        # 反推组件总需求
-        comp_needed: Dict[str, float] = {}
-        for pid, liters in total_demand.items():
+        # 每个产品独立计算缩放因子（基于其 BOM 中最紧张的组件）
+        product_scale: Dict[str, float] = {}
+        for pid, demand in total_demand.items():
+            if demand <= 0:
+                product_scale[pid] = 1.0
+                continue
             recipe = BOM.get(pid, {})
+            min_scale = 1.0
             for comp_id, ratio in recipe.items():
-                comp_needed[comp_id] = comp_needed.get(comp_id, 0.0) + liters * ratio
+                if comp_id not in component_stock:
+                    continue  # 未传入 = 不限量
+                need = demand * ratio
+                available = component_stock[comp_id]
+                if need > 0 and available < need:
+                    scale = available / need
+                    if scale < min_scale:
+                        min_scale = scale
+            product_scale[pid] = min_scale
 
-        # 找最紧张的组件 → 最大可行比例
-        # 只检查 component_stock 中显式传入的组件，未传入的视为不限量
-        max_scale = 1.0
-        limiting_component = None
-        for comp_id, need in comp_needed.items():
-            if comp_id not in component_stock:
-                continue  # 未传入 = 不限量
-            available = component_stock[comp_id]
-            if need > 0 and available < need:
-                scale = available / need
-                if scale < max_scale:
-                    max_scale = scale
-                    limiting_component = comp_id
-
-        if max_scale >= 1.0:
+        # 检查是否所有产品都不受限
+        if all(s >= 1.0 for s in product_scale.values()):
             return daily_targets
 
-        # 等比缩减
+        # 按各产品自己的缩放因子缩减
+        # 同时检查 batch_min：缩减后若低于 batch_min，直接置零（避免 simulate_day 回弹超产）
+        mixer_spec = get_mixer_spec()
+        batch_min = mixer_spec.batch_min_liters
         scaled: List[Dict[str, float]] = []
         for day in daily_targets:
             s_day: Dict[str, float] = {}
             for pid, liters in day.items():
-                s_day[pid] = liters * max_scale
+                s_liters = liters * product_scale.get(pid, 1.0)
+                # 若缩减后日产量 < batch_min，该产品当天不生产
+                if 0 < s_liters < batch_min:
+                    s_liters = 0.0
+                s_day[pid] = s_liters
             scaled.append(s_day)
         return scaled
 
@@ -694,6 +868,9 @@ class ProductionSimulator:
           4. 周末加班补缺口
           5. 汇总
         """
+        # 重置跨周换型状态：周末清洗维护后，新周从干净状态开始
+        self._last_product = None
+
         mixer_spec = get_mixer_spec()
         line_spec = get_bottling_line_spec()
         result = ProductionResult(week=week)
@@ -718,6 +895,8 @@ class ProductionSimulator:
 
         # ── 3) 逐天模拟 (Mon-Fri) ──
         total_shortfall = 0.0
+        shortfall_by_product: Dict[str, float] = {}  # per-product shortfall for OT targeting
+        planned_by_product: Dict[str, float] = {}     # per-product planned liters
         for day_idx, targets in enumerate(daily_targets):
             day_result = self.simulate_day(
                 day=day_idx + 1,
@@ -728,6 +907,14 @@ class ProductionSimulator:
             result.daily_results.append(day_result)
             total_shortfall += day_result.shortfall_liters
 
+            # 追踪分产品计划量和缺口
+            for pid, planned in targets.items():
+                planned_by_product[pid] = planned_by_product.get(pid, 0.0) + planned
+                actual_pid = day_result.actual_by_product.get(pid, 0.0)
+                sf = planned - actual_pid
+                if sf > 0:
+                    shortfall_by_product[pid] = shortfall_by_product.get(pid, 0.0) + sf
+
             result.planned_liters += day_result.planned_liters
             result.actual_liters += day_result.actual_liters
             result.changeover_loss_hours += day_result.changeover_hours
@@ -735,27 +922,33 @@ class ProductionSimulator:
             result.mixing_hours += day_result.mixing_hours
             result.bottling_hours += day_result.bottling_hours
 
-        # ── 4) 周末加班（如有缺口，在 OT 小时上限内追产）──
+        # ── 4) 周末加班（按各产品缺口比例追产，最多两天）──
         max_ot_hours = _cfg("bottling.max_overtime_hours", daily_hours)
-        remaining = total_shortfall
+        ot_hours_remaining = max_ot_hours
 
-        if remaining > 0.1 and max_ot_hours > 0:
-            # OT 天只生产周五的口味组（继续未完的批次），避免跨口味换型浪费
-            friday_targets = daily_targets[-1] if daily_targets else {}
-            friday_total = sum(friday_targets.values())
+        for ot_day in [6, 7]:  # Saturday, Sunday
+            if ot_hours_remaining <= 0:
+                break
+            # 汇总当前剩余缺口
+            remaining_sf = sum(shortfall_by_product.values())
+            if remaining_sf < 0.1:
+                break
+
+            # 按各产品缺口比例分配 OT 产能
             ot_targets: Dict[str, float] = {}
-            if friday_total > 0:
-                for pid, liters in friday_targets.items():
-                    ot_targets[pid] = remaining * (liters / friday_total)
+            for pid, sf in shortfall_by_product.items():
+                if sf > 0.001:
+                    ot_targets[pid] = sf * (remaining_sf / max(remaining_sf, 0.001))
+                    # 确保 ot_targets 不超过剩余缺口
+                    ot_targets[pid] = min(ot_targets[pid], sf)
 
             ot_result = self.simulate_day(
-                day=6,
+                day=ot_day,
                 product_targets=ot_targets,
-                day_hours=min(daily_hours, max_ot_hours),
+                day_hours=min(daily_hours, ot_hours_remaining),
                 is_overtime=True,
             )
 
-            # 仅在实际有产出时才计入 OT（避免"来加班只做换型不生产"的无意义情景）
             if ot_result.actual_liters > 0.01:
                 result.daily_results.append(ot_result)
                 result.actual_liters += ot_result.actual_liters
@@ -764,25 +957,75 @@ class ProductionSimulator:
                 result.mixing_hours += ot_result.mixing_hours
                 result.bottling_hours += ot_result.bottling_hours
                 result.weekend_overtime_days += 1
+                ot_hours_remaining -= ot_result.bottling_hours
 
-        # ── 4b) 最终产能缺口 ──
+                # 更新各产品缺口
+                for pid in list(shortfall_by_product.keys()):
+                    ot_produced = ot_result.actual_by_product.get(pid, 0.0)
+                    shortfall_by_product[pid] = max(0.0, shortfall_by_product.get(pid, 0.0) - ot_produced)
+            else:
+                # 无产出则不再尝试后续 OT 天
+                break
+
+        # ── 4b) 汇总分产品产量 ──
+        for day_result in result.daily_results:
+            for pid, actual_liters in day_result.actual_by_product.items():
+                result.actual_by_product[pid] = (
+                    result.actual_by_product.get(pid, 0.0) + actual_liters)
+            result.excess_from_batch_min += day_result.excess_from_batch_min
+
+        # ── 4c) 最终产能缺口 ──
         result.shortfall_liters = max(0.0, result.planned_liters - result.actual_liters)
 
-        # ── 4c) 外包生产（短fall超出OT上限时）──
-        # per operations_info.txt:106: "outsourcing is 2× as expensive"
-        if result.shortfall_liters > 0.1:
+        # ── 4d) 外包生产（仅当需求超出 5 班制上限 168h/周时才触发）──
+        # per operations_info.txt:106: "If the required capacity exceeds 168 hours
+        #  per week, additional production must be outsourced."
+        # 计算满足全部需求（已生产 + 缺口）所需的总生产小时
+        hours_for_shortfall = (
+            result.shortfall_liters / max(line_spec.capacity_liters_per_hour, 1)
+        )
+        total_hours_needed = result.bottling_hours + hours_for_shortfall
+        if result.shortfall_liters > 0.1 and total_hours_needed > 168:
+            # 内部产能已达上限，缺口外包
             result.outsourced_liters = result.shortfall_liters
-            # 外包成本 = 2× 单位变动成本 (混合+灌装)
-            unit_mix_var = mixer_spec.cost_per_hour / line_spec.capacity_liters_per_hour
-            unit_bottle_var = line_spec.flexible_labor_per_hour / line_spec.capacity_liters_per_hour
-            result.outsourced_cost = result.outsourced_liters * (unit_mix_var + unit_bottle_var) * 2.0
+            # 外包成本 = 2× 单位内部总成本（含固定折旧+人工+变动）
+            # 先计算单位内部总生产成本
+            total_internal_cost = (
+                sum(d.mixing_fixed_cost + d.mixing_variable_cost +
+                    d.bottling_fixed_cost + d.bottling_variable_cost +
+                    d.permanent_labor_cost
+                    for d in result.daily_results)
+            )
+            if result.actual_liters > 0:
+                unit_internal_cost = total_internal_cost / result.actual_liters
+            else:
+                unit_internal_cost = (
+                    mixer_spec.cost_per_hour / max(line_spec.capacity_liters_per_hour, 1) +
+                    line_spec.flexible_labor_per_hour / max(line_spec.capacity_liters_per_hour, 1)
+                )
+            result.outsourced_cost = result.outsourced_liters * unit_internal_cost * 2.0
             # 外包产量不计入 actual_liters（非内部生产），但满足需求
             result.shortfall_liters = 0.0
 
-        # ── 5) 启动产能损失 ──
-        result.startup_loss_liters = (
-            result.actual_liters * (line_spec.startup_productivity_loss_pct / 100.0)
-        )
+        # ── 4d) 汇总启动产能损失 & 废品材料成本 ──
+        # 启动损失已在 simulate_day 中从 actual_liters 扣除，
+        # 此处汇总并计算对应的材料浪费成本（组件已消耗但未产出合格品）
+        total_startup_loss = sum(d.startup_loss_liters for d in result.daily_results)
+        result.startup_loss_liters = total_startup_loss
+        waste_material_cost = 0.0
+        if total_startup_loss > 0 and plan.batches:
+            batch_map = dict(plan.batches)
+            total_weekly_liters = sum(batch_map.values())
+            if total_weekly_liters > 0:
+                avg_material_cost = 0.0
+                for pid, liters in batch_map.items():
+                    recipe = BOM.get(pid, {})
+                    mat_cost = sum(
+                        ratio * COMPONENT_MAP[cid].base_price
+                        for cid, ratio in recipe.items()
+                    )
+                    avg_material_cost += mat_cost * (liters / total_weekly_liters)
+                waste_material_cost = total_startup_loss * avg_material_cost
 
         # ── 6) 汇总成本 ──
         result.mixing_cost = sum(
@@ -802,7 +1045,7 @@ class ProductionSimulator:
         result.total_production_cost = (
             result.mixing_cost + result.bottling_fixed_cost
             + result.bottling_variable_cost + result.permanent_labor_cost
-            + result.outsourced_cost
+            + result.outsourced_cost + waste_material_cost
         )
         return result
 

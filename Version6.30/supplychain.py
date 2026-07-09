@@ -202,8 +202,14 @@ def calculate_distribution_costs(demand_by_customer: Dict[str, float]) -> Dict:
 def calculate_warehouse_costs(avg_raw_value: float, avg_fg_value: float,
                               avg_tank_days: float = 0,
                               avg_comp_qty: Dict[str, float] = None,
-                              avg_fg_qty: Dict[str, float] = None) -> Dict[str, float]:
+                              avg_fg_qty: Dict[str, float] = None,
+                              raw_pallet_capacity: int = None,
+                              fg_pallet_capacity: int = None) -> Dict[str, float]:
     """仓储成本（26 周），基于实际托盘/罐区占用计算。
+
+    空间成本按配置的托盘位数量（容量）计费，非实际占用。
+    per operations_info.txt: "Each additional pallet location costs €200"
+    "you will always pay the fixed rate for each pallet location every year"
 
     Args:
         avg_raw_value: 组件平均库存价值（备用，用于回退估算）
@@ -211,10 +217,16 @@ def calculate_warehouse_costs(avg_raw_value: float, avg_fg_value: float,
         avg_tank_days: 罐区平均每日使用量
         avg_comp_qty: {comp_id: avg_quantity} 各组件平均库存量（pieces for 包装, L for 液体）
         avg_fg_qty: {pid: avg_liters} 各成品平均库存升数
+        raw_pallet_capacity: 原料仓库配置托盘位数（None=使用默认值）
+        fg_pallet_capacity: 成品仓库配置托盘位数（None=使用默认值）
     """
     wh = WAREHOUSE
     half = WEEKS_PER_ROUND / 52
     half_year_days = WEEKS_PER_ROUND * 5  # 130 working days
+
+    # 使用传入的容量配置，否则回退到默认值
+    raw_capacity = raw_pallet_capacity if raw_pallet_capacity is not None else wh.raw_materials_pallet_locations
+    fg_capacity = fg_pallet_capacity if fg_pallet_capacity is not None else wh.finished_goods_pallet_locations
 
     raw_pallets = 0.0
     fg_pallets = 0.0
@@ -245,16 +257,18 @@ def calculate_warehouse_costs(avg_raw_value: float, avg_fg_value: float,
         fg_pallets = avg_fg_value / 0.50 / 600
 
     # ── 空间成本 ──
-    raw_space = raw_pallets * wh.pallet_location_cost_annual * half
-    fg_space = fg_pallets * wh.pallet_location_cost_annual * half
+    # 固定费用按容量（托盘位）收取，与实际占用无关
+    # per ops_info: "you will always pay the fixed rate for each pallet location every year"
+    raw_space = raw_capacity * wh.pallet_location_cost_annual * half
+    fg_space = fg_capacity * wh.pallet_location_cost_annual * half
 
     # 罐区：tank_liters / 30000 L per tank
     num_tanks = tank_liters / 30000.0 if tank_liters > 0 else 0
     tank = num_tanks * wh.tank_yard_cost_per_day_per_tank * half_year_days
 
-    # 溢出仓库（超出配置托盘位时触发）
-    overflow_raw = max(0.0, raw_pallets - wh.raw_materials_pallet_locations)
-    overflow_fg = max(0.0, fg_pallets - wh.finished_goods_pallet_locations)
+    # 溢出仓库（超出配置托盘位时触发，€3/托盘/天）
+    overflow_raw = max(0.0, raw_pallets - raw_capacity)
+    overflow_fg = max(0.0, fg_pallets - fg_capacity)
     overflow_cost = (overflow_raw + overflow_fg) * wh.overflow_pallet_cost_per_day * half_year_days
 
     return {
