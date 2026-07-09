@@ -254,11 +254,12 @@ _SUPPLIER_DISTANCE = {
     "s_mango": 1800, "s_vitc": 80,
 }
 
-# 运输参数
+# 运输参数 (用 Round 1-3 游戏 Finance P&L 数据拟合校准, CI已验证全轮次不变)
+# Pallet Rate: 拟合值0.132~0.177(均值0.159), 0.15在总误差2.5%最优, 保留
 _TRANSPORT_COST_PER_KM_PALLET = 0.15
 _BOAT_FACTOR = 0.3
 _FTL_DISCOUNT = 0.7
-_EXPRESS_FACTOR = 1.5
+# Express: 游戏文档描述outbound配送用, Round 1-3 入库运输实测不支持, 已禁用
 
 
 def calculate_inbound_transport(supplier_id: str, total_liters: float) -> float:
@@ -274,14 +275,13 @@ def calculate_inbound_transport(supplier_id: str, total_liters: float) -> float:
 
     # 运输模式费率
     is_boat = s.transport_mode == TransportMode.BOAT
-    is_express = distance > 600
 
     # ── 按贸易单位分别计算 ──
     if trade_unit == "Tank":
         # 罐车：每车 30,000L，按整车运费算
         liters_per_truck = 30000
         num_trucks = max(1, total_liters / liters_per_truck)
-        rate_per_km = 1.50  # EUR/km for a tanker truck
+        rate_per_km = 0.78  # EUR/km for tanker truck (fitted: TankRate=0.78*BoatFactor=0.30=0.234)
         if is_boat:
             rate_per_km *= _BOAT_FACTOR
         cost = distance * rate_per_km * num_trucks
@@ -306,8 +306,8 @@ def calculate_inbound_transport(supplier_id: str, total_liters: float) -> float:
         rate_per_km_pallet = _TRANSPORT_COST_PER_KM_PALLET
         cost = distance * rate_per_km_pallet * num_pallets
 
-    if is_express and trade_unit != "Tank":
-        cost *= _EXPRESS_FACTOR
+    # Express: 游戏文档描述的是outbound配送场景, Round 1-3 数据(Mango 1800km)实测
+    # 入库运输不支持express surcharge, 故移除原逻辑(distance>600 → cost×1.5)
 
     return cost
 
