@@ -262,9 +262,10 @@ class ProductionSimulator:
 
     DAYS_PER_WEEK = 5
     WEEKEND_OVERTIME_MULTIPLIER = 1.5
-    # 游戏实际约 10 名生产人员：5 灌装操作员 + 5 其他（混合器操作员、主管、质检、维护）
-    # BottlingLineSpec.num_operators 仅含灌装线操作员，此处补上其余人员
-    ADDITIONAL_PRODUCTION_STAFF = 5
+    # 灌装线操作员人数由 BottlingLineSpec.num_operators 定义，班次内已包含。
+    # 混合器操作员成本计入 mixer cost_per_hour，主管/质检/维护在 overhead 中。
+    # 此处不再额外添加人员，以对齐游戏基线 production cost。
+    ADDITIONAL_PRODUCTION_STAFF = 0
 
     def __init__(self, seed: int = 42):
         self.rng = random.Random(seed)
@@ -331,8 +332,11 @@ class ProductionSimulator:
         基准故障概率 (None): 30%/天
         预防维护: A little → -30%故障概率, A lot → -50%故障概率 (per operations_info.txt:116-118)
         故障排除培训: -40%故障持续时间 (per operations_info.txt:123: "reduces breakdown duration by 40%")
-
         来料检验: 额外降低故障概率 (per operations_info.txt:2-5: 拒收缺陷包装 → 减少灌装线故障)
+
+        包装材料质量 & 灌装线公差 (per purchasing_info.txt:47-48, entity_info.txt:40):
+          - 供应商 quality (Poor/Middle/High): Poor → +30% 故障概率, Middle → +15%, High → 基准
+          - 灌装线 tolerances (Narrow/Middle/Wide): Narrow → +25% 概率, Middle → +10%, Wide → 基准
         """
         pm = _cfg("bottling.general_settings.preventive_maintenance", "A little")
         baseline_prob = 0.30
@@ -345,6 +349,20 @@ class ProductionSimulator:
         if inspection.get("Mono Packaging Materials", False) or \
            inspection.get("Philip Jones Plastics", False):
             daily_prob *= 0.80  # 包装检验额外降低 20% 故障概率
+
+        # 包装材料供应商质量 → 影响故障概率 (per purchasing_info.txt:47-48)
+        from purchasing import SUPPLIER_DECISIONS
+        quality_map = {"High": 1.0, "Middle": 1.15, "Poor": 1.30}
+        # 取两个包装供应商中最差的质量水平
+        pack_q = SUPPLIER_DECISIONS.get("s_pack", {}).get("quality", "High")
+        pet_q = SUPPLIER_DECISIONS.get("s_pet", {}).get("quality", "Middle")
+        worst_q = min(pack_q, pet_q, key=lambda q: quality_map.get(q, 1.0))
+        daily_prob *= quality_map.get(worst_q, 1.0)
+
+        # 灌装线公差 → 影响对包装缺陷的敏感度 (per entity_info.txt:40)
+        line_spec = get_bottling_line_spec()
+        tolerance_map = {"Wide": 1.0, "Middle": 1.10, "Narrow": 1.25}
+        daily_prob *= tolerance_map.get(line_spec.tolerances, 1.0)
 
         if self.rng.random() < daily_prob:
             downtime = self.rng.uniform(1.0, 4.0)
@@ -536,7 +554,7 @@ class ProductionSimulator:
         # 每次换型后首小时产生缺陷品 = capacity/hour × 1h × loss_pct
         if num_changeovers > 0 and result.actual_liters > 0.001:
             loss_per_co = capacity_per_hour * 1.0 * (line_spec.startup_productivity_loss_pct / 100.0)
-            startup_loss = min(num_changeovers * loss_per_co, result.actual_liters * 0.5)
+            startup_loss = min(num_changeovers * loss_per_co, result.actual_liters)
             result.startup_loss_liters = startup_loss
             result.actual_liters -= startup_loss
             if capacity_per_hour > 0:
@@ -875,12 +893,22 @@ class ProductionSimulator:
         line_spec = get_bottling_line_spec()
         result = ProductionResult(week=week)
 
-        # 无计划时仅计固定成本
+        # 无计划时仅计固定成本（含永久员工工资，与 simulate_day 空目标分支一致）
         if not plan.batches:
             wpy = 52.0
+            days_per_year = 260.0
             result.bottling_fixed_cost = line_spec.fixed_cost_annual / wpy
             result.mixing_cost = mixer_spec.fixed_cost_annual / wpy
-            result.total_production_cost = result.bottling_fixed_cost + result.mixing_cost
+            # 永久员工即使不生产也需支付工资（与 simulate_day 空目标逻辑一致）
+            shifts = _cfg("bottling.shifts_per_week", 2)
+            total_staff = line_spec.num_operators * shifts + self.ADDITIONAL_PRODUCTION_STAFF
+            result.permanent_labor_cost = (
+                total_staff * line_spec.operator_cost_annual / wpy
+            )
+            result.total_production_cost = (
+                result.bottling_fixed_cost + result.mixing_cost
+                + result.permanent_labor_cost
+            )
             return result
 
         daily_hours = self._daily_available_hours()
@@ -957,7 +985,11 @@ class ProductionSimulator:
                 result.mixing_hours += ot_result.mixing_hours
                 result.bottling_hours += ot_result.bottling_hours
                 result.weekend_overtime_days += 1
-                ot_hours_remaining -= ot_result.bottling_hours
+                # OT 时间消耗 = 灌装 + 换型 + 故障（总占用时间，非仅有效生产时间）
+                ot_time_consumed = (ot_result.bottling_hours +
+                                    ot_result.changeover_hours +
+                                    ot_result.breakdown_hours)
+                ot_hours_remaining -= ot_time_consumed
 
                 # 更新各产品缺口
                 for pid in list(shortfall_by_product.keys()):
@@ -1089,13 +1121,79 @@ def calculate_component_needs(product_liters: Dict[str, float]) -> Dict[str, flo
 # 各 Tab 辅助计算函数
 # ═══════════════════════════════════════════════════════════════
 
-def calculate_inspection_cost() -> float:
+def calculate_inspection_cost(num_inbound_order_lines: int = 0) -> Dict[str, float]:
     """Inbound tab — 来料检验成本（26 周）。
+
     网页位置：Operations → inbound → Raw materials inspection
+
+    成本构成 (per operations_info.txt:2-5):
+      1. 固定费用: €5,000/年/供应商 (检验项目本身)
+      2. 额外劳动力: 检验增加 2h/订单行 的入库操作时间，
+         超出永久员工容量部分按 €42/h 灵活工计费
+
+    Args:
+        num_inbound_order_lines: 26周内的入库订单行总数
+
+    Returns:
+        {"fixed_cost": float, "extra_labor_hours": float, "total": float}
     """
     inspection = _cfg("inbound.raw_materials_inspection", {})
     count = sum(1 for v in inspection.values() if v)
-    return count * 5000.0 * 0.5  # EUR 5k/year/supplier, half year
+    fixed_cost = count * 5000.0 * 0.5  # EUR 5k/year/supplier, half year
+
+    # 检验额外劳动力：2h/订单行 (per operations_info.txt:2-5)
+    extra_labor_hours = 0.0
+    if count > 0:
+        extra_labor_hours = num_inbound_order_lines * 2.0
+
+    return {
+        "fixed_cost": fixed_cost,
+        "extra_labor_hours": extra_labor_hours,
+        "total": fixed_cost,  # 劳动力成本在 calculate_warehouse_cost_raw_materials 中统一计算
+    }
+
+
+def calculate_administration_costs(num_inbound_orders: int = 0,
+                                    num_inbound_order_lines: int = 0,
+                                    num_outbound_orders: int = 0,
+                                    num_outbound_order_lines: int = 0,
+                                    num_active_suppliers: int = 5) -> Dict[str, float]:
+    """管理成本（26 周）。
+
+    网页位置：Finance → Administration costs
+
+    成本构成 (per finance_info.txt:85-100):
+      - 入库订单: €50/订单
+      - 入库订单行: €10/订单行
+      - 出库订单: €25/订单
+      - 出库订单行: €2/订单行
+      - 供应商关系维护: €40,000/年
+
+    Returns:
+        {"inbound_orders": float, "inbound_lines": float,
+         "outbound_orders": float, "outbound_lines": float,
+         "supplier_relations": float, "total": float}
+    """
+    half = 0.5  # 26 weeks
+
+    inbound_order_cost = num_inbound_orders * 50.0
+    inbound_line_cost = num_inbound_order_lines * 10.0
+    outbound_order_cost = num_outbound_orders * 25.0
+    outbound_line_cost = num_outbound_order_lines * 2.0
+    supplier_relations = num_active_suppliers * 40000.0 * half  # €40k/year PER supplier
+
+    total = (inbound_order_cost + inbound_line_cost +
+             outbound_order_cost + outbound_line_cost +
+             supplier_relations)
+
+    return {
+        "inbound_orders": inbound_order_cost,
+        "inbound_lines": inbound_line_cost,
+        "outbound_orders": outbound_order_cost,
+        "outbound_lines": outbound_line_cost,
+        "supplier_relations": supplier_relations,
+        "total": total,
+    }
 
 
 def calculate_project_costs() -> dict:
@@ -1129,12 +1227,13 @@ def calculate_project_costs() -> dict:
         details["pet_inflate"] = 140000.0 * half
         investment_delta += 700000.0
 
-    # Breakdown training: €400 × 操作员总数
+    # Breakdown training: €400 × 操作员总数（所有班次 + 额外生产人员）
     training = _cfg("bottling.general_settings.solve_breakdowns_training", "No")
     if training == "Yes":
         line_spec = get_bottling_line_spec()
-        # 操作员 = 灌装线操作员 + 额外生产人员
-        total_operators = line_spec.num_operators + ProductionSimulator.ADDITIONAL_PRODUCTION_STAFF
+        shifts = _cfg("bottling.shifts_per_week", 2)
+        # 操作员 = 灌装线操作员 × 班次 + 额外生产人员（混合器操作员、主管、质检、维护）
+        total_operators = line_spec.num_operators * shifts + ProductionSimulator.ADDITIONAL_PRODUCTION_STAFF
         details["breakdown_training"] = 400.0 * total_operators
 
     # MCC: €10,000/year
@@ -1148,20 +1247,34 @@ def calculate_project_costs() -> dict:
 
 def calculate_warehouse_cost_finished_goods(avg_daily_pallets: float = 0,
                                              num_outbound_order_lines: int = 0,
-                                             num_obsolete_batches: int = 0) -> float:
+                                             num_obsolete_batches: int = 0,
+                                             num_pallets_from_production: float = 0,
+                                             num_outer_boxes: int = 0) -> Dict[str, float]:
     """Outbound tab — 成品仓库成本（26 周）。
 
     网页位置：Operations → outbound → Finished goods warehouse
 
-    自营仓库:
+    自营仓库 (per operations_info.txt:140-157):
       - 托盘位: €200/年/位
-      - 永久员工: €40,000/年/人
-      - 溢出仓库: €3/托盘/天 (per operations_info.txt)
+      - 永久员工: €40,000/年/人 (40h/week)
+      - 溢出仓库: €3/托盘/天
+      - 劳动力需求:
+        · 生产入库上架: 6 min/托盘
+        · 拣货: 10 min/订单行 + 6 min/托盘(或托盘层) + 3 min/外箱
+        · 溢出仓库搬运: 6 min/托盘 × 2（往返）
+        · 报废品处理: 6 min/托盘
+        · 清洁整理: 4 h/天
+      - 灵活工: €42/h（超出永久员工容量时）
 
-    外包仓库 (per operations_info.txt):
+    外包仓库 (per operations_info.txt:159-168):
       Conventional:  €1.30/pallet/day + €1.25/pallet intake + €3.00/order line dispatch
       Automated:     €1.50/pallet/day + €1.00/pallet intake + €2.50/order line dispatch
       MCC:           €10,000/year + 自动化费率 (storage cost follows automated model)
+
+    Returns:
+        {"space_cost": float, "overflow_cost": float, "perm_labor_cost": float,
+         "flex_labor_cost": float, "total_labor_hours": float,
+         "perm_hours_available": float, "flex_hours": float, "total": float}
     """
     fg = _cfg("outbound.finished_goods_warehouse", {})
     pallets = fg.get("pallet_locations", 1400)
@@ -1170,6 +1283,8 @@ def calculate_warehouse_cost_finished_goods(avg_daily_pallets: float = 0,
     from entities import WAREHOUSE
 
     half_year_days = 26 * 5  # 130 working days in half year (5-day week × 26 weeks)
+    weeks = 26.0
+    half = 0.5
 
     if outsource == "Conventional":
         # per operations_info.txt: €1.30/pallet/day, €1.25/pallet intake, €3.00/order line dispatch
@@ -1177,34 +1292,262 @@ def calculate_warehouse_cost_finished_goods(avg_daily_pallets: float = 0,
         intake = avg_daily_pallets * 1.25  # daily intake ≈ avg daily throughput
         dispatch = num_outbound_order_lines * 3.00
         space_cost = storage + intake + dispatch
-        labor_cost = 0.0  # 外包无自有员工
+        overflow_cost = 0.0
+        perm_labor_cost = 0.0
+        flex_labor_cost = 0.0
+        total_labor_hours = 0.0
+        perm_hours_available = 0.0
+        flex_hours = 0.0
     elif outsource == "Automated":
         # per operations_info.txt: €1.50/pallet/day, €1.00/pallet intake, €2.50/order line dispatch
         storage = avg_daily_pallets * 1.50 * half_year_days
         intake = avg_daily_pallets * 1.00
         dispatch = num_outbound_order_lines * 2.50
         space_cost = storage + intake + dispatch
-        labor_cost = 0.0
+        overflow_cost = 0.0
+        perm_labor_cost = 0.0
+        flex_labor_cost = 0.0
+        total_labor_hours = 0.0
+        perm_hours_available = 0.0
+        flex_hours = 0.0
     elif outsource == "MCC":
         # per operations_info.txt: €10,000/year + automated warehouse rates
         storage = avg_daily_pallets * 1.50 * half_year_days
         intake = avg_daily_pallets * 1.00
         dispatch = num_outbound_order_lines * 2.50
         space_cost = storage + intake + dispatch
-        labor_cost = 0.0
+        overflow_cost = 0.0
+        perm_labor_cost = 0.0
+        flex_labor_cost = 0.0
+        total_labor_hours = 0.0
+        perm_hours_available = 0.0
+        flex_hours = 0.0
         # MCC年费已在 calculate_project_costs 中计入
     else:
-        # 自营仓库
-        space_cost = pallets * WAREHOUSE.pallet_location_cost_annual * 0.5
-        # 溢出仓库: €3/pallet/day (per operations_info.txt:13)
-        # 由调用方传入或在此估算
-        labor_cost = employees * WAREHOUSE.perm_employee_cost_annual * 0.5
+        # ── 自营仓库 ──
+        # 空间成本
+        space_cost = pallets * WAREHOUSE.pallet_location_cost_annual * half
+        # 溢出仓库: €3/pallet/day (per operations_info.txt:13,143)
+        overflow_pallets = max(0.0, avg_daily_pallets - pallets)
+        overflow_cost = overflow_pallets * WAREHOUSE.overflow_pallet_cost_per_day * half_year_days
+
+        # ── 劳动力成本 (per operations_info.txt:145-156) ──
+        # 永久员工容量: employees × 40h/week × 26 weeks
+        perm_hours_available = employees * 40.0 * weeks
+
+        # a) 生产入库上架: 6 min(0.1h)/托盘
+        storing_hours = num_pallets_from_production * 0.1
+
+        # b) 拣货: 10 min/订单行 + 6 min/托盘 + 3 min/外箱
+        # 估算拣货托盘数 ≈ 出库托盘总量（avg_daily_pallets × working_days）
+        outbound_pallets_total = avg_daily_pallets * half_year_days
+        picking_hours = (
+            num_outbound_order_lines * (10.0 / 60.0) +
+            outbound_pallets_total * 0.1 +
+            num_outer_boxes * (3.0 / 60.0)
+        )
+
+        # c) 清洁整理: 4 h/天
+        cleaning_hours = 4.0 * half_year_days
+
+        # d) 溢出仓库搬运: 6 min(0.1h)/托盘 × 2（往返）
+        overflow_handling_hours = overflow_pallets * 0.1 * 2 * half_year_days
+
+        # e) 报废品处理: 6 min(0.1h)/托盘 (per operations_info.txt:153)
+        obsolete_hours = num_obsolete_batches * 0.1
+
+        total_labor_hours = (storing_hours + picking_hours + cleaning_hours +
+                             overflow_handling_hours + obsolete_hours)
+
+        # 永久员工成本
+        perm_labor_cost = employees * WAREHOUSE.perm_employee_cost_annual * half
+
+        # 灵活劳动力: 超出永久员工容量的部分 × €42/h
+        flex_hours = max(0.0, total_labor_hours - perm_hours_available)
+        flex_labor_cost = flex_hours * 42.0  # per operations_info.txt:32
 
     # 报废品处理: €2.50/batch (仅外包仓库, per operations_info.txt:166)
     if outsource != "None":
         space_cost += num_obsolete_batches * 2.50
 
-    return space_cost + labor_cost
+    total = space_cost + overflow_cost + perm_labor_cost + flex_labor_cost
+
+    return {
+        "space_cost": space_cost,
+        "overflow_cost": overflow_cost,
+        "perm_labor_cost": perm_labor_cost,
+        "flex_labor_cost": flex_labor_cost,
+        "total_labor_hours": total_labor_hours,
+        "perm_hours_available": perm_hours_available,
+        "flex_hours": flex_hours,
+        "total": total,
+    }
+
+
+def calculate_warehouse_cost_raw_materials(avg_daily_pallets: float = 0,
+                                            avg_daily_tanks: float = 0,
+                                            num_inbound_order_lines: int = 0,
+                                            num_ibc_overflow: int = 0,
+                                            num_inbound_deliveries: int = 0,
+                                            total_inbound_pallets: float = 0) -> Dict[str, float]:
+    """Inbound tab — 原料仓库成本（26 周）。
+
+    网页位置：Operations → inbound → Raw materials warehouse + Tank yard
+
+    包含:
+      - 托盘位: €200/年/位 (per operations_info.txt:9)
+      - 永久员工: €40,000/年/人 (per operations_info.txt:32)
+      - 溢仓: €3/托盘/天 (per operations_info.txt:13)
+      - 罐区外包: €25/罐/天 + €10/次入库 + €100/次运输 (per operations_info.txt:20-22)
+      - 劳动力需求 & 灵活工成本 (per operations_info.txt:24-32)
+
+    劳动力需求明细（per operations_info.txt:24-32）:
+      - 入库: 1h/订单行 + 6min/托盘
+      - 配送生产: 6min/托盘 + 12min/罐
+      - 清洁/维护: 4h/天
+      - 溢仓搬运: 6min/托盘（往返）
+      - IBC 灌装: 1h/IBC（罐区不足时）
+
+    注意：本函数中的 space_cost / overflow_cost 由 supplychain.calculate_warehouse_costs
+    统一计算并计入 P&L。此处保留计算但不再重复计入，仅返回供参考。
+
+    Returns:
+        {"space_cost": float, "labor_cost": float, "flex_labor_cost": float,
+         "tank_yard_cost": float, "overflow_cost": float, "total": float}
+    """
+    from entities import WAREHOUSE
+
+    inbound = _cfg("inbound.raw_materials_warehouse", {})
+    pallets = inbound.get("pallet_locations", 1000)
+    employees = inbound.get("permanent_employees", 5)
+    intake_days = inbound.get("intake_time_days", 3)
+
+    half_year_days = 26 * 5  # 130 working days
+    weeks = 26.0
+    half = 0.5
+
+    # ── 1) 空间成本 ──
+    # 托盘位固定成本
+    pallet_space_cost = pallets * WAREHOUSE.pallet_location_cost_annual * half
+
+    # 溢仓成本: 超出容量的托盘 × €3/天
+    overflow_pallets = max(0.0, avg_daily_pallets - pallets)
+    overflow_cost = overflow_pallets * WAREHOUSE.overflow_pallet_cost_per_day * half_year_days
+
+    # ── 2) 罐区成本（外包）──
+    # per operations_info.txt:20-22
+    tank_yard_cost = (
+        avg_daily_tanks * WAREHOUSE.tank_yard_cost_per_day_per_tank * half_year_days +
+        num_inbound_deliveries * WAREHOUSE.tank_yard_intake_cost_per_delivery +
+        num_inbound_deliveries * WAREHOUSE.tank_yard_delivery_cost_per_trip
+    )
+
+    # ── 3) 劳动力成本 ──
+    # 永久员工容量: employees × 40h/week × 26 weeks
+    perm_hours_available = employees * 40.0 * weeks
+
+    # 劳动力需求计算
+    # a) 入库: 1h/订单行 + 6min(0.1h)/托盘 (per operations_info.txt:24-26)
+    #     intake_time_days 降低峰值但不改变总工时
+    intake_hours = num_inbound_order_lines * 1.0 + total_inbound_pallets * 0.1
+
+    # b) 配送生产: 6min(0.1h)/托盘 + 12min(0.2h)/罐
+    issue_hours = (avg_daily_pallets * 0.1 + avg_daily_tanks * 0.2) * half_year_days
+
+    # c) 清洁/维护: 4h/天
+    cleaning_hours = 4.0 * half_year_days
+
+    # d) 溢仓搬运: 6min(0.1h)/托盘 × 2（往返）
+    overflow_handling_hours = overflow_pallets * 0.1 * 2 * half_year_days
+
+    # e) IBC 灌装: 1h/IBC（罐区容量不足时）
+    ibc_hours = num_ibc_overflow * 1.0
+
+    total_labor_hours = (intake_hours + issue_hours + cleaning_hours +
+                         overflow_handling_hours + ibc_hours)
+
+    # 永久员工成本
+    perm_labor_cost = employees * WAREHOUSE.perm_employee_cost_annual * half
+
+    # 灵活劳动力: 超出永久员工容量的部分 × €42/h
+    flex_hours = max(0.0, total_labor_hours - perm_hours_available)
+    flex_labor_cost = flex_hours * 42.0  # per operations_info.txt:32
+
+    # ── 4) 汇总 ──
+    total = (pallet_space_cost + overflow_cost + tank_yard_cost +
+             perm_labor_cost + flex_labor_cost)
+
+    return {
+        "space_cost": pallet_space_cost,
+        "overflow_cost": overflow_cost,
+        "tank_yard_cost": tank_yard_cost,
+        "perm_labor_cost": perm_labor_cost,
+        "flex_labor_cost": flex_labor_cost,
+        "total": total,
+        "total_labor_hours": total_labor_hours,
+        "perm_hours_available": perm_hours_available,
+        "flex_hours": flex_hours,
+    }
+
+
+def calculate_stock_interest_cost(component_stock_value: float = 0.0,
+                                   finished_goods_stock_value: float = 0.0) -> Dict[str, float]:
+    """库存利息成本（26 周）。
+
+    网页位置：Finance → Stock costs → Interest Costs
+
+    成本构成 (per finance_info.txt:56-64):
+      - 组件库存: 按采购成本计价，15% 年利率
+      - 成品库存: 按采购+生产成本计价，15% 年利率
+
+    Args:
+        component_stock_value: 组件平均库存价值 €
+        finished_goods_stock_value: 成品平均库存价值 €
+
+    Returns:
+        {"component_interest": float, "fg_interest": float, "total": float}
+    """
+    annual_rate = 0.15
+    half = 0.5  # 26 weeks
+
+    component_interest = component_stock_value * annual_rate * half
+    fg_interest = finished_goods_stock_value * annual_rate * half
+
+    return {
+        "component_interest": component_interest,
+        "fg_interest": fg_interest,
+        "total": component_interest + fg_interest,
+    }
+
+
+def calculate_purchasing_project_costs(dual_sourcing_suppliers: int = 0,
+                                        vmi_suppliers: int = 0,
+                                        supplier_development_suppliers: int = 0
+                                        ) -> Dict[str, float]:
+    """采购相关项目成本（26 周）。
+
+    网页位置：Purchasing → 各项协作/项目决策
+
+    成本构成:
+      - 双源采购: €40,000/年/额外供应商 (per purchasing_info.txt:75)
+      - VMI: €5,000/年/供应商 (per purchasing_info.txt:64)
+      - 供应商发展: €60,000/年/供应商 (per purchasing_info.txt:69)
+
+    Returns:
+        {"dual_sourcing": float, "vmi": float, "supplier_development": float, "total": float}
+    """
+    half = 0.5  # 26 weeks
+
+    dual_cost = dual_sourcing_suppliers * 40000.0 * half
+    vmi_cost = vmi_suppliers * 5000.0 * half
+    dev_cost = supplier_development_suppliers * 60000.0 * half
+
+    return {
+        "dual_sourcing": dual_cost,
+        "vmi": vmi_cost,
+        "supplier_development": dev_cost,
+        "total": dual_cost + vmi_cost + dev_cost,
+    }
 
 
 # ═══════════════════════════════════════════════════════════════

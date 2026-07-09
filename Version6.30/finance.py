@@ -101,7 +101,11 @@ def calculate_roi(pl: ProfitLoss, inv: Investment) -> float:
 
 
 class FinanceCalculator:
-    """财务计算器 — 从仿真结果汇总生成 P&L 和 Investment"""
+    """财务计算器 — 从仿真结果汇总生成 P&L 和 Investment。
+
+    注意：此类为参考实现，当前 simulation.py 直接构造 ProfitLoss / Investment 对象。
+    保留此类作为备用接口（如需从外部数据直接生成财务报告）。
+    """
 
     def __init__(self):
         self.pl = ProfitLoss()
@@ -192,7 +196,7 @@ class FinanceCalculator:
         pl.administration_costs = (
             num_inbound_orders * 50 + num_inbound_order_lines * 10 +
             num_outbound_orders * 25 + num_outbound_order_lines * 2 +
-            40000 * (WEEKS_PER_ROUND / 52)  # supplier relationship EUR 40k/year
+            5 * 40000 * (WEEKS_PER_ROUND / 52)  # supplier relationship EUR 40k/year/supplier × 5 suppliers
         )
 
         # Distribution

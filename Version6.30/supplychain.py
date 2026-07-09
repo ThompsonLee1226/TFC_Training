@@ -128,8 +128,22 @@ class InventoryState:
         return consumed
 
     def add_component(self, comp_id: str, qty: float, week: int,
-                      cost: float, shelf_life_weeks: Optional[int]):
-        expiry = (week + shelf_life_weeks) if shelf_life_weeks else None
+                      cost: float, shelf_life_weeks: Optional[int],
+                      order_week: Optional[int] = None):
+        """添加组件库存批次。
+
+        Args:
+            order_week: 下单周次。若提供且组件有保质期，则 expiry 从下单周起算
+                        （per entity_info.txt:79-80 "The expiry countdown starts
+                         from the supplier's order date"）。
+                        若未提供则回退到旧行为（从收货周起算）。
+        """
+        if shelf_life_weeks and order_week is not None:
+            expiry = order_week + shelf_life_weeks
+        elif shelf_life_weeks:
+            expiry = week + shelf_life_weeks
+        else:
+            expiry = None
         batch = StockBatch(comp_id, qty, week, expiry, cost)
         self.component_batches.setdefault(comp_id, []).append(batch)
 
@@ -166,32 +180,64 @@ class InventoryState:
 # ═══════════════════════════════════════════════════════════════
 
 def calculate_outbound_transport(customer_id: str, total_pallets: float) -> float:
-    """出库运输成本（26 周）"""
+    """出库运输成本（26 周）。
+
+    费率已校准至游戏基线 (finance_info.txt 未给出具体单价，
+    仅提及 shipment-size discount 和 express factor >600km)。
+    隐含游戏费率 ≈ €2.93/truck-km → 使用 €0.098/pallet-km。
+    """
     distances = {"c_fg": 200, "c_land": 350, "c_dom": 150}
     distance = distances.get(customer_id, 200)
     num_ftl = max(1, total_pallets / 30)
-    cost_per_km = 0.15 * 30  # per truck-km
+    # 校准后费率: €0.098/pallet-km × 30 pallets = €2.94/truck-km
+    cost_per_km = 0.098 * 30  # per truck-km (calibrated to game baseline)
     base = distance * cost_per_km * num_ftl
     if distance > 600:
         base *= 1.5
     return base
 
 
-def calculate_distribution_costs(demand_by_customer: Dict[str, float]) -> Dict:
+def calculate_distribution_costs(demand_by_customer: Dict[str, float],
+                                 demand_detail: Dict = None) -> Dict:
     """
     计算所有客户的出库运输成本。
 
     参数:
         demand_by_customer: {customer_id: total_liters_over_26_weeks}
+        demand_detail: 可选，{(product_id, customer_id): weekly_pieces}
+                      传入后按产品组合加权计算 avg_liters_per_pallet
 
     返回:
         {"total": float, "by_customer": {customer_id: float}}
     """
+    from entities import PRODUCT_MAP
+
+    # 按产品组合加权计算平均升/托盘
+    if demand_detail:
+        # 按客户汇总每种产品的总升数，计算加权平均 pallet 密度
+        cust_liters: Dict[str, float] = {}
+        cust_pallets: Dict[str, float] = {}
+        for (pid, cid), pieces in demand_detail.items():
+            p = PRODUCT_MAP.get(pid)
+            if not p:
+                continue
+            liters = pieces * p.liters_per_pack
+            pallets_from_pid = pieces / p.per_pallet if p.per_pallet > 0 else 0
+            cust_liters[cid] = cust_liters.get(cid, 0.0) + liters
+            cust_pallets[cid] = cust_pallets.get(cid, 0.0) + pallets_from_pid
+        # 按客户计算加权平均
+        avg_liters_map = {}
+        for cid in cust_liters:
+            if cust_pallets.get(cid, 0) > 0:
+                avg_liters_map[cid] = cust_liters[cid] / cust_pallets[cid]
+    else:
+        avg_liters_map = {}
+
     total = 0.0
     by_customer = {}
     for cid, liters in demand_by_customer.items():
-        # 估算托盘数 = 总升 / (每托盘平均升数)
-        avg_liters_per_pallet = 600  # rough average across all products
+        # 按产品组合加权计算 avg_liters_per_pallet，回退到 600
+        avg_liters_per_pallet = avg_liters_map.get(cid, 600.0)
         pallets = liters / avg_liters_per_pallet
         cost = calculate_outbound_transport(cid, pallets)
         total += cost
@@ -262,9 +308,8 @@ def calculate_warehouse_costs(avg_raw_value: float, avg_fg_value: float,
     raw_space = raw_capacity * wh.pallet_location_cost_annual * half
     fg_space = fg_capacity * wh.pallet_location_cost_annual * half
 
-    # 罐区：tank_liters / 30000 L per tank
-    num_tanks = tank_liters / 30000.0 if tank_liters > 0 else 0
-    tank = num_tanks * wh.tank_yard_cost_per_day_per_tank * half_year_days
+    # 罐区成本由 operations.calculate_warehouse_cost_raw_materials 统一计算
+    # (含 €25/天 + €10 intake + €100 delivery，更完整)
 
     # 溢出仓库（超出配置托盘位时触发，€3/托盘/天）
     overflow_raw = max(0.0, raw_pallets - raw_capacity)
@@ -274,59 +319,10 @@ def calculate_warehouse_costs(avg_raw_value: float, avg_fg_value: float,
     return {
         "raw_space": raw_space,
         "fg_space": fg_space,
-        "tank_yard": tank,
         "overflow": overflow_cost,
-        "total": raw_space + fg_space + tank + overflow_cost,
+        "total": raw_space + fg_space + overflow_cost,
         "raw_pallets": raw_pallets,
         "fg_pallets": fg_pallets,
-    }
-
-
-def calculate_handling_costs(inbound_pallets: float, outbound_pallets: float,
-                              num_inbound_order_lines: int = 0,
-                              num_outbound_order_lines: int = 0) -> Dict[str, float]:
-    """人工搬运成本（26周），基于 operations_info.txt 中的工时数据。
-
-    原料仓库 (per operations_info.txt:24-32):
-      - 入库: 1h/订单行 + 6min/托盘
-      - 供应生产: 6min/托盘, 12min/罐
-      - 日常管理: 4h/天
-      - 溢出仓库: 6min/托盘
-      - IBC充填: 1h/IBC
-
-    成品仓库 (per operations_info.txt:145-155):
-      - 入库存储: 6min/托盘
-      - 拣货: 10min/订单行 + 6min/托盘 + 3min/外箱
-      - 溢出仓库: 6min/托盘
-      - 报废处理: 6min/托盘
-      - 清洁整理: 4h/天
-    """
-    # 基础参数
-    half_year_weeks = WEEKS_PER_ROUND
-    half_year_days = half_year_weeks * 5  # 130 working days
-    hour_rate = 40000.0 / (52 * 40)  # €/h = 年薪 / (52周 × 40h) ≈ €19.23/h
-
-    # 原料仓库工时
-    inbound_hours = (
-        num_inbound_order_lines * 1.0 +        # 1h/订单行
-        inbound_pallets * 0.1 +                 # 6min/托盘 = 0.1h
-        half_year_days * 4.0                    # 4h/天 日常管理
-    )
-    # 成品仓库工时
-    outbound_hours = (
-        outbound_pallets * 0.1 +                # 6min/托盘 入库
-        num_outbound_order_lines * (10.0/60) +  # 10min/订单行
-        outbound_pallets * 0.1 +                # 6min/托盘 拣货
-        half_year_days * 4.0                    # 4h/天 清洁
-    )
-
-    inbound_labor = inbound_hours * hour_rate
-    outbound_labor = outbound_hours * hour_rate
-
-    return {
-        "inbound": inbound_labor,
-        "outbound": outbound_labor,
-        "total": inbound_labor + outbound_labor,
     }
 
 

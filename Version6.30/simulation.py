@@ -131,11 +131,17 @@ def run() -> SimulationResult:
     pending_orders: dict = {}
 
     def place_order(comp_id: str, qty: float, current_week: int, lead_time_days: int):
-        """下单，记录到达周"""
+        """下单，记录到达周和下单周（用于保质期起算）。
+
+        per entity_info.txt:79-80 — 组件保质期从供应商下单日起算。
+        """
         lt_weeks = max(1, round(lead_time_days / 7))
         arrive = current_week + lt_weeks
+        shelf_life = _comp_shelf_life(comp_id)
+        # 预计算 expiry_week = 下单周 + 保质期（如有），收货时直接使用
+        expiry_week = (current_week + shelf_life) if shelf_life else None
         pending_orders.setdefault(arrive, []).append(
-            (comp_id, qty, _comp_price(comp_id), _comp_shelf_life(comp_id))
+            (comp_id, qty, _comp_price(comp_id), shelf_life, current_week, expiry_week)
         )
 
     # ── 首轮预下单（覆盖 lead time）──
@@ -173,8 +179,10 @@ def run() -> SimulationResult:
     for week in range(1, WEEKS_PER_ROUND + 1):
         # ── 1) 收货 ──
         if week in pending_orders:
-            for comp_id, qty, price, shelf_life in pending_orders.pop(week):
-                inv_state.add_component(comp_id, qty, week, price, shelf_life)
+            for order in pending_orders.pop(week):
+                comp_id, qty, price, shelf_life, order_week, expiry_week = order
+                inv_state.add_component(comp_id, qty, week, price, shelf_life,
+                                        order_week=order_week)
                 total_components_ordered += qty * price
 
         # ── 2) 查询当前组件库存 ──
@@ -183,28 +191,34 @@ def run() -> SimulationResult:
             current_comp_stock[comp_id] = inv_state.get_component_stock(comp_id, week)
 
         # ── 3) 生产计划 & 仿真（带组件约束）──
+        # 冻结期 (per supplychain_info.txt:19-35):
+        #   前 frozen_period_weeks 周计划锁定，组件已预购，不检查库存约束
+        #   冻结期后允许根据实际组件库存调整产量
         plan = prod_sim.make_plan(week, product_weekly_demand)
-        prod_result = prod_sim.simulate_week(week, plan,
-                                             component_stock=current_comp_stock)
+        frozen_weeks = sc_cfg.get("frozen_period_weeks", 2)
+        if week <= frozen_weeks:
+            # 冻结期内：计划锁定，跳过组件库存检查
+            prod_result = prod_sim.simulate_week(week, plan, component_stock=None)
+        else:
+            # 冻结期外：根据实际组件库存调整
+            prod_result = prod_sim.simulate_week(week, plan,
+                                                 component_stock=current_comp_stock)
         total_production_cost += prod_result.total_production_cost
         actual_produced = prod_result.actual_liters
         total_produced_liters += actual_produced
 
-        # ── 4) 消耗组件（按各产品实际产量 × BOM 反推）──
-        # 使用 ProductionResult.actual_by_product 获取分产品产量，
-        # 避免统一缩放导致的不精确（per-product tracking from operations.py B8 fix）
+        # ── 4) 消耗组件（按各产品实际产量 × BOM 直接反推）──
         if hasattr(prod_result, 'actual_by_product') and prod_result.actual_by_product:
             for pid, actual_pid_liters in prod_result.actual_by_product.items():
                 if actual_pid_liters <= 0:
                     continue
+                p = supplychain.PRODUCT_MAP.get(pid)
+                if not p:
+                    continue
                 recipe = operations.BOM.get(pid, {})
-                scale = actual_pid_liters / max(product_weekly_demand.get(pid, 1.0), 1.0)
+                packs = actual_pid_liters / p.liters_per_pack
                 for comp_id, ratio in recipe.items():
-                    weekly_need = weekly_comp_needs.get(comp_id, 0.0)
-                    # 按该产品在周需求中的占比反推该产品对组件的消耗
-                    pid_share = (product_weekly_demand.get(pid, 0.0) * ratio /
-                                 max(weekly_need, 0.001)) if weekly_need > 0 else 0.0
-                    actual_comp_use = weekly_need * pid_share * min(scale, 1.0)
+                    actual_comp_use = packs * ratio
                     inv_state.consume_component(comp_id, actual_comp_use, week)
         else:
             # 回退：统一缩放（兼容旧版 ProductionResult）
@@ -288,15 +302,18 @@ def run() -> SimulationResult:
         # ── 7) 下单补货 ──
         # target = 覆盖 lead_time + 安全库存
         # 当库存低于 target × 0.7 时触发补货
+        # order_qty 必须满足 lot_size_weeks 批量约束 (per supplychain_info.txt:10-11)
         for comp_id, need in weekly_comp_needs.items():
             current = inv_state.get_component_stock(comp_id, week)
             ss_weeks = sc_cfg["safety_stock_weeks"].get(comp_id, 2.0)
+            lot_weeks = sc_cfg["lot_size_weeks"].get(comp_id, 2.0)
             sid = supplier_for_component.get(comp_id, "")
             lt_days = purchasing.get_supplier_lead_time(sid) if sid else 7
             lt_weeks = max(1, round(lt_days / 7))
             target = need * (ss_weeks + lt_weeks)
             if current < target * 0.7:
-                order_qty = target - current
+                # 补货量 = max(lot_size 批量, 缺口)，确保满足最小订货批量
+                order_qty = max(lot_weeks * need, target - current)
                 place_order(comp_id, order_qty, week, lt_days)
 
         # ── 8) 过期清理 ──
@@ -314,7 +331,7 @@ def run() -> SimulationResult:
 
     # 清理未到达的订单
     for orders in pending_orders.values():
-        for comp_id, qty, price, _ in orders:
+        for comp_id, qty, price, shelf_life, order_week, expiry_week in orders:
             cum_component_value += qty * price / 2
 
     avg_component_value = cum_component_value / WEEKS_PER_ROUND
@@ -354,32 +371,15 @@ def run() -> SimulationResult:
         fg_pallet_capacity=fg_pallet_capacity)
     stock_interest = supplychain.calculate_stock_interest(avg_component_value, avg_fg_value)
 
-    # 成品仓库外包：使用 operations.py 外包费率替代自营 FG 空间成本
+    # 成品仓库外包类型 — 延迟到订单行数估算完成后统一计算仓库成本
     fg_outsource = ops_outbound.get("outsource_type", "None")
-    if fg_outsource != "None":
-        fg_pallets_avg = wh_costs.get("fg_pallets", 0.0)
-        # 估算日出库托盘数 = 周均 / 5 工作日
-        daily_fg_pallets = fg_pallets_avg / (WEEKS_PER_ROUND * 5) if fg_pallets_avg > 0 else 0.0
-        num_ol_est = sum(
-            1 for (_, _), p in sales.get_effective_weekly_demand_pieces().items()
-            if p > 0
-        ) * WEEKS_PER_ROUND
-        fg_outsource_cost = operations.calculate_warehouse_cost_finished_goods(
-            avg_daily_pallets=daily_fg_pallets,
-            num_outbound_order_lines=num_ol_est,
-            num_obsolete_batches=0)
-        # 外包费替代自营 FG 空间成本
-        wh_costs["fg_outsource"] = fg_outsource_cost
-        wh_costs["fg_space"] = 0.0
-        wh_costs["total"] = (wh_costs["raw_space"] + fg_outsource_cost +
-                             wh_costs["tank_yard"] + wh_costs["overflow"])
-    else:
-        wh_costs["fg_outsource"] = 0.0
 
     # 出库运输
     weekly_by_cust = sales.weekly_demand_by_customer()
     total_by_cust = {cid: liters * WEEKS_PER_ROUND for cid, liters in weekly_by_cust.items()}
-    dist = supplychain.calculate_distribution_costs(total_by_cust)
+    dist = supplychain.calculate_distribution_costs(
+        total_by_cust,
+        demand_detail=sales.get_effective_weekly_demand_pieces())
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 汇总 — 间接成本（动态计算）
@@ -387,6 +387,7 @@ def run() -> SimulationResult:
 
     # 来料检验
     inspection = operations.calculate_inspection_cost()
+    inspection_cost = inspection["total"]
 
     # 运营改进项目成本
     proj = operations.calculate_project_costs()
@@ -421,11 +422,39 @@ def run() -> SimulationResult:
         if p > 0
     ) * WEEKS_PER_ROUND
 
-    # Handling: 基于实际入出库量 + 订单行数动态计算
-    handling_costs = supplychain.calculate_handling_costs(
-        total_inbound_pallets, total_outbound_pallets,
+    # ── 原料仓库综合成本（per operations_info.txt:4-32）──
+    # 包含：托盘位空间费 + 罐区外包费 + 永久员工 + 灵活工
+    rm_daily_pallets = total_inbound_pallets / (WEEKS_PER_ROUND * 5) if total_inbound_pallets > 0 else 0.0
+    # 罐区日均使用: 液体组件总量（升）/ tank容量 / 工作天数
+    liquid_needs = sum(component_needs.get(cid, 0) for cid in ["orange", "mango", "vitamin_c"])
+    rm_daily_tanks = liquid_needs / 30000.0 / (WEEKS_PER_ROUND * 5) if liquid_needs > 0 else 0.0
+    num_inbound_deliveries = num_suppliers * WEEKS_PER_ROUND  # 每家供应商每周一次交货
+    rm_perm_employees = ops_inbound.get("permanent_employees", 5)
+
+    rm_wh = operations.calculate_warehouse_cost_raw_materials(
+        avg_daily_pallets=rm_daily_pallets,
+        avg_daily_tanks=rm_daily_tanks,
         num_inbound_order_lines=num_inbound_order_lines,
-        num_outbound_order_lines=num_outbound_order_lines)
+        num_ibc_overflow=0,
+        num_inbound_deliveries=num_inbound_deliveries,
+        total_inbound_pallets=total_inbound_pallets)
+
+    # ── 成品仓库综合成本（per operations_info.txt:140-157）──
+    # 包含：空间费（自营或外包）+ 永久员工 + 灵活工
+    fg_pallets_avg = wh_costs.get("fg_pallets", 0.0)
+    daily_fg_pallets = fg_pallets_avg / (WEEKS_PER_ROUND * 5) if fg_pallets_avg > 0 else 0.0
+    # 生产入库托盘 ≈ 出库托盘总量（稳态均衡）
+    fg_production_pallets = total_outbound_pallets
+    # 外箱数 ≈ 订单行数 × 2（粗略估计）
+    fg_outer_boxes = num_outbound_order_lines * 2
+    fg_perm_employees = ops_outbound.get("permanent_employees", 4)
+
+    fg_wh = operations.calculate_warehouse_cost_finished_goods(
+        avg_daily_pallets=daily_fg_pallets,
+        num_outbound_order_lines=num_outbound_order_lines,
+        num_obsolete_batches=0,
+        num_pallets_from_production=fg_production_pallets,
+        num_outer_boxes=fg_outer_boxes)
 
     # Admin: 基于订单量动态计算
     admin_cost = (
@@ -433,7 +462,7 @@ def run() -> SimulationResult:
         num_inbound_order_lines * 10 +
         num_outbound_orders * 25 +
         num_outbound_order_lines * 2 +
-        40000 * (WEEKS_PER_ROUND / 52)  # supplier relationship €40k/year
+        num_suppliers * 40000 * (WEEKS_PER_ROUND / 52)  # supplier relationship €40k/year PER supplier
     )
 
     # Interest AR/AP: 基于客户/供应商付款条款动态计算
@@ -487,24 +516,6 @@ def run() -> SimulationResult:
 
     total_project_cost = (proj["total"] + vmi_cost + sd_cost + sales_vmi_cost + dual_sourcing_cost)
 
-    # Tank yard 外包费用 (per operations_info.txt:18-22)
-    # 估算罐区使用量：液体组件需求总量 / 每个tank容量
-    liquid_comps = ["orange", "mango", "vitamin_c"]
-    total_tank_days = 0
-    num_tank_deliveries = 0
-    for cid in liquid_comps:
-        tank_liters = component_needs.get(cid, 0)
-        num_tanks = max(1, tank_liters / 30000)  # 30,000L/tank
-        # 平均每tank存储时间 ≈ lead time + safety stock weeks
-        ss = sc_cfg["safety_stock_weeks"].get(cid, 2.0)
-        avg_days = (ss + 1) * 5  # weeks → working days
-        total_tank_days += num_tanks * avg_days
-        num_tank_deliveries += max(1, num_tanks)
-    from entities import WAREHOUSE
-    tank_yard_cost = (total_tank_days * WAREHOUSE.tank_yard_cost_per_day_per_tank +
-                      num_tank_deliveries * WAREHOUSE.tank_yard_intake_cost_per_delivery +
-                      num_tank_deliveries * WAREHOUSE.tank_yard_delivery_cost_per_trip)
-
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 5. FINANCE — P&L
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -515,9 +526,26 @@ def run() -> SimulationResult:
     pl.production_costs = total_production_cost
     pl.overhead_costs = overhead
     pl.stock_costs_interest = stock_interest * STOCK_INTEREST_FACTOR
-    pl.stock_costs_space = wh_costs["total"] * STOCK_SPACE_FACTOR
+    # ── contract_costs ──
+    # TODO: 当 Purchasing 模块实现合同终止逻辑后，在此处填入合同终止费用
+    # per instruction.txt:123 — 提前终止多轮合同需支付剩余期间的合同价值
+    # 当前轮次内无合同终止，保持为 0
+
+    # 仓储空间成本：原料托盘位 + 罐区（含 intake+delivery 费） + 成品仓库 + 溢出
+    fg_space_for_pl = fg_wh["space_cost"] if fg_outsource != "None" else wh_costs["fg_space"]
+    pl.stock_costs_space = (
+        wh_costs["raw_space"] +           # 原料仓库托盘位费
+        fg_space_for_pl +                 # 成品仓库（自营托盘位费 或 外包存储费）
+        rm_wh["tank_yard_cost"] +         # 罐区外包（含 €25/天 + €10 intake + €100 delivery）
+        wh_costs["overflow"]              # 溢出仓库费
+    ) * STOCK_SPACE_FACTOR
     pl.stock_costs_risk = STOCK_RISK_BASELINE + total_obsoletes
-    pl.handling_costs = handling_costs["total"] + inspection
+    # 搬运人工成本：永久员工工资 + 灵活工费用 + 来料检验固定费
+    pl.handling_costs = (
+        rm_wh["perm_labor_cost"] + rm_wh["flex_labor_cost"] +
+        fg_wh["perm_labor_cost"] + fg_wh["flex_labor_cost"] +
+        inspection_cost
+    )
     pl.administration_costs = admin_cost
     pl.distribution_costs = dist["total"] * DISTRIBUTION_COST_FACTOR
     pl.project_costs = total_project_cost
