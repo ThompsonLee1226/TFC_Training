@@ -23,19 +23,19 @@ SUPPLIER_DECISIONS: Dict[str, dict] = {
     # Mono Packaging Materials — Pack 1 liter (法国, 卡车, 500km, 15天)
     "s_pack": {
         "quality":              "High",
-        "payment_term_weeks":   7,
+        "payment_term_weeks":   4,
         "trade_unit":           "Pallet",
-        "delivery_reliability_pct": 82.0,
+        "delivery_reliability_pct": 96.0,
         "delivery_window":      "1 day",
         "supplier_development": False,
         "vmi":                  False,
     },
-    # Philip Jones Plastics — PET (荷兰, 卡车, 100km, 5天)
+    # Platin PET — PET (法国, 卡车, 500km, 15天)
     "s_pet": {
-        "quality":              "Middle",
-        "payment_term_weeks":   5,
+        "quality":              "High",
+        "payment_term_weeks":   4,
         "trade_unit":           "Pallet",
-        "delivery_reliability_pct": 93.0,
+        "delivery_reliability_pct": 96.0,
         "delivery_window":      "1 day",
         "supplier_development": False,
         "vmi":                  False,
@@ -43,7 +43,7 @@ SUPPLIER_DECISIONS: Dict[str, dict] = {
     # Miami Oranges — Orange (美国, 海运, 7500km, 30天)
     "s_orange": {
         "quality":              "High",
-        "payment_term_weeks":   8,
+        "payment_term_weeks":   4,
         "trade_unit":           "Tank",
         "delivery_reliability_pct": 98.0,
         "delivery_window":      "1 day",
@@ -53,20 +53,20 @@ SUPPLIER_DECISIONS: Dict[str, dict] = {
     # NO8DO Mango — Mango (西班牙, 卡车, 1800km, 10天)
     "s_mango": {
         "quality":              "High",
-        "payment_term_weeks":   7,
+        "payment_term_weeks":   4,
         "trade_unit":           "IBC",
-        "delivery_reliability_pct": 84.0,
-        "delivery_window":      "1 day",
+        "delivery_reliability_pct": 96.0,
+        "delivery_window":      "2 days",
         "supplier_development": False,
         "vmi":                  False,
     },
-    # SYI — Vitamin C (荷兰, 卡车, 80km, 4天)
+    # AlL Vitamins — Vitamin C (法国, 卡车, 500km, 20天)
     "s_vitc": {
         "quality":              "High",
-        "payment_term_weeks":   6,
-        "trade_unit":           "IBC",
-        "delivery_reliability_pct": 98.0,
-        "delivery_window":      "4 hours",
+        "payment_term_weeks":   4,
+        "trade_unit":           "Drum",
+        "delivery_reliability_pct": 96.0,
+        "delivery_window":      "1 day",
         "supplier_development": False,
         "vmi":                  False,
     },
@@ -163,33 +163,33 @@ def _trade_unit_effect(tu: str) -> float:
 
 
 # ── 各供应商参考 CI 值 ──
-# 从 TFC V9 游戏当前回合 (Round 4) 实测获取
+# 从 Decision.csv Round 3 实测获取（与当前 SUPPLIER_DECISIONS 对齐）
 # 参考 CI = 当前参数配置下游戏实际显示的 Contract Index
 SUPPLIER_REFERENCE_CI = {
-    "s_pack":   0.9468,   # Pak,      基线: High/PT=7/Rel=82%/1day/Pallet
-    "s_pet":    1.0102,   # PET,      基线: Middle/PT=5/Rel=93%/1day/Pallet
-    "s_orange": 1.0091,   # Orange,   基线: High/PT=8/Rel=98%/1day/Tank
-    "s_mango":  1.0116,   # Mango,    基线: High/PT=7/Rel=84%/1day/IBC
-    "s_vitc":   1.0518,   # VitaminC, 基线: High/PT=6/Rel=98%/4hours/IBC
+    "s_pack":   0.993,    # Mono Packaging Materials, 基线: High/PT=4/Rel=96%/1day/Pallet
+    "s_pet":    0.996,    # Platin PET,               基线: High/PT=4/Rel=96%/1day/Pallet
+    "s_orange": 1.004,    # Miami Oranges,            基线: High/PT=4/Rel=98%/1day/Tank
+    "s_mango":  1.0564,   # NO8DO Mango,              基线: High/PT=4/Rel=96%/2days/IBC
+    "s_vitc":   1.031,    # AlL Vitamins,             基线: High/PT=4/Rel=96%/1day/Drum
 }
 
 # 各供应商参考参数配置（用于计算效应增量）
 SUPPLIER_REFERENCE_PARAMS = {
-    "s_pack":   {"quality": "High", "payment_term_weeks": 7,
-                 "delivery_reliability_pct": 82.0, "delivery_window": "1 day",
+    "s_pack":   {"quality": "High", "payment_term_weeks": 4,
+                 "delivery_reliability_pct": 96.0, "delivery_window": "1 day",
                  "vmi": False, "trade_unit": "Pallet"},
-    "s_pet":    {"quality": "Middle", "payment_term_weeks": 5,
-                 "delivery_reliability_pct": 93.0, "delivery_window": "1 day",
+    "s_pet":    {"quality": "High", "payment_term_weeks": 4,
+                 "delivery_reliability_pct": 96.0, "delivery_window": "1 day",
                  "vmi": False, "trade_unit": "Pallet"},
-    "s_orange": {"quality": "High", "payment_term_weeks": 8,
+    "s_orange": {"quality": "High", "payment_term_weeks": 4,
                  "delivery_reliability_pct": 98.0, "delivery_window": "1 day",
                  "vmi": False, "trade_unit": "Tank"},
-    "s_mango":  {"quality": "High", "payment_term_weeks": 7,
-                 "delivery_reliability_pct": 84.0, "delivery_window": "1 day",
+    "s_mango":  {"quality": "High", "payment_term_weeks": 4,
+                 "delivery_reliability_pct": 96.0, "delivery_window": "2 days",
                  "vmi": False, "trade_unit": "IBC"},
-    "s_vitc":   {"quality": "High", "payment_term_weeks": 6,
-                 "delivery_reliability_pct": 98.0, "delivery_window": "4 hours",
-                 "vmi": False, "trade_unit": "IBC"},
+    "s_vitc":   {"quality": "High", "payment_term_weeks": 4,
+                 "delivery_reliability_pct": 96.0, "delivery_window": "1 day",
+                 "vmi": False, "trade_unit": "Drum"},
 }
 
 
@@ -248,22 +248,67 @@ def get_supplier_lead_time(supplier_id: str) -> int:
 # 采购成本计算
 # ═══════════════════════════════════════════════════════════════
 
-# 运输距离 (km)
-_SUPPLIER_DISTANCE = {
-    "s_pack": 500, "s_pet": 100, "s_orange": 7500,
-    "s_mango": 1800, "s_vitc": 80,
+# ── 运输费率（来自 Decision.csv Row 47-49，游戏实际使用的固定费率）──
+# 格式: {supplier_id: {cost_per_shipment, cost_per_trade_unit, cost_per_full_load, full_load_units}}
+_SUPPLIER_TRANSPORT = {
+    "s_pack": {
+        "cost_per_shipment":    100.0,   # €/订单
+        "cost_per_trade_unit":   20.0,   # €/托盘
+        "cost_per_full_load":   500.0,   # €/FTL (30托盘)
+        "full_load_units":       30,     # 每FTL=30托盘
+    },
+    "s_pet": {
+        "cost_per_shipment":    125.0,
+        "cost_per_trade_unit":   25.0,   # €/托盘
+        "cost_per_full_load":   625.0,   # €/FTL
+        "full_load_units":       30,
+    },
+    "s_orange": {
+        "cost_per_shipment":    125.0,
+        "cost_per_trade_unit":   40.0,   # €/罐车分量（基本单位）
+        "cost_per_full_load":  1000.0,   # €/罐车 (30,000L)
+        "full_load_units":   30000,     # 每罐车=30,000L
+    },
+    "s_mango": {
+        "cost_per_shipment":    100.0,
+        "cost_per_trade_unit":   30.0,   # €/IBC
+        "cost_per_full_load":   750.0,   # €/FTL
+        "full_load_units":       30,     # 每FTL=30 IBC
+    },
+    "s_vitc": {
+        "cost_per_shipment":    100.0,
+        "cost_per_trade_unit":   24.0,   # €/Drum
+        "cost_per_full_load":   600.0,   # €/FTL
+        "full_load_units":       30,     # 每FTL=30 Drums (粗略)
+    },
 }
 
-# 运输参数 (用 Round 1-3 游戏 Finance P&L 数据拟合校准, CI已验证全轮次不变)
-# Pallet Rate: 拟合值0.132~0.177(均值0.159), 0.15在总误差2.5%最优, 保留
-_TRANSPORT_COST_PER_KM_PALLET = 0.15
-_BOAT_FACTOR = 0.3
-_FTL_DISCOUNT = 0.7
-# Express: 游戏文档描述outbound配送用, Round 1-3 入库运输实测不支持, 已禁用
 
+def calculate_inbound_transport(supplier_id: str, total_units: float,
+                                num_orders: int = None) -> float:
+    """计算单供应商 26 周的入库运输成本。
 
-def calculate_inbound_transport(supplier_id: str, total_liters: float) -> float:
-    """计算单供应商 26 周的入库运输成本"""
+    使用游戏实际的固定费率（来自 Decision.csv），而非距离模型。
+
+    游戏费率结构 (per Decision.csv Row 47-49):
+      - cost_per_shipment: 每次下单固定费用
+      - cost_per_trade_unit: 每托盘/Drum/IBC 的运输费
+      - cost_per_full_load: 每 FTL/罐车 的整车运输费
+
+    计费规则: 按整车费率计算（经济批量），不够一车按贸易单位费率。
+
+    Args:
+        supplier_id: 供应商 ID
+        total_units: 总需求量（包装组件为 pieces，液体组件为 liters）
+        num_orders: 下单次数（默认按 lot_size 估算）
+
+    Returns:
+        26 周运输总成本 (€)
+    """
+    rates = _SUPPLIER_TRANSPORT.get(supplier_id)
+    if not rates:
+        return 0.0
+
     s = SUPPLIER_MAP.get(supplier_id)
     if not s:
         return 0.0
@@ -271,45 +316,49 @@ def calculate_inbound_transport(supplier_id: str, total_liters: float) -> float:
     d = SUPPLIER_DECISIONS.get(supplier_id, {})
     trade_unit = d.get("trade_unit", "Pallet")
     comp = COMPONENT_MAP.get(s.component_id)
-    distance = _SUPPLIER_DISTANCE.get(supplier_id, 500)
 
-    # 运输模式费率
-    is_boat = s.transport_mode == TransportMode.BOAT
-
-    # ── 按贸易单位分别计算 ──
+    # ── 1) 计算贸易单位数量 ──
     if trade_unit == "Tank":
-        # 罐车：每车 30,000L，按整车运费算
-        liters_per_truck = 30000
-        num_trucks = max(1, total_liters / liters_per_truck)
-        rate_per_km = 0.78  # EUR/km for tanker truck (fitted: TankRate=0.78*BoatFactor=0.30=0.234)
-        if is_boat:
-            rate_per_km *= _BOAT_FACTOR
-        cost = distance * rate_per_km * num_trucks
-
+        # 液体罐车：每车 30,000L，total_units 已是升数
+        num_trade_units = total_units / 30000.0
+        full_load_size = 30000.0
+        use_full_load = True  # 罐车总是整车
     elif trade_unit == "IBC":
-        # IBC：每个 1,000L，按托盘运输（1 IBC ≈ 1 pallet）
-        num_ibcs = max(1, total_liters / 1000)
-        rate_per_km_pallet = _TRANSPORT_COST_PER_KM_PALLET
-        cost = distance * rate_per_km_pallet * num_ibcs
-
-    elif trade_unit == "FTL":
-        # 整车：30 pallets/truck
-        pallet_content = comp.pallet_content or 600
-        liters_per_truck = 30 * pallet_content
-        num_trucks = max(1, total_liters / liters_per_truck)
-        rate_per_km_pallet = _TRANSPORT_COST_PER_KM_PALLET * _FTL_DISCOUNT
-        cost = distance * rate_per_km_pallet * 30 * num_trucks
-
+        # IBC: 每个 1,000L，total_units 已是升数
+        num_trade_units = total_units / 1000.0
+        full_load_size = rates.get("full_load_units", 30)
+        use_full_load = True
+    elif trade_unit == "Drum":
+        # Drum: 每个 250L，total_units 已是升数
+        num_trade_units = total_units / 250.0
+        full_load_size = rates.get("full_load_units", 30)
+        use_full_load = True
     else:  # Pallet
-        pallet_content = comp.pallet_content or 600
-        num_pallets = max(1, total_liters / pallet_content)
-        rate_per_km_pallet = _TRANSPORT_COST_PER_KM_PALLET
-        cost = distance * rate_per_km_pallet * num_pallets
+        # 包装材料：total_units 是 pieces，需按 pallet_content 换算托盘数
+        pallet_content = comp.pallet_content if comp and comp.pallet_content else 1000
+        num_trade_units = total_units / pallet_content
+        full_load_size = rates.get("full_load_units", 30)
+        use_full_load = True
 
-    # Express: 游戏文档描述的是outbound配送场景, Round 1-3 数据(Mango 1800km)实测
-    # 入库运输不支持express surcharge, 故移除原逻辑(distance>600 → cost×1.5)
+    if num_trade_units <= 0:
+        return 0.0
 
-    return cost
+    # ── 2) 整车计费（经济批量）──
+    if use_full_load and full_load_size > 0:
+        num_full_loads = max(1, int(num_trade_units / full_load_size + 0.999))
+        transport_cost = num_full_loads * rates["cost_per_full_load"]
+    else:
+        transport_cost = num_trade_units * rates["cost_per_trade_unit"]
+
+    # ── 3) 每单固定费用 ──
+    if num_orders is None:
+        # 按 lot_size 估算下单次数: 26周 / lot_size_weeks
+        from supplychain import SUPPLY_CHAIN_CONFIG
+        lot_weeks = SUPPLY_CHAIN_CONFIG.get("lot_size_weeks", {}).get(s.component_id, 3)
+        num_orders = max(1, round(26.0 / lot_weeks))
+    shipment_cost = rates["cost_per_shipment"] * num_orders
+
+    return transport_cost + shipment_cost
 
 
 def calculate_purchase_costs(component_needs: Dict[str, float]) -> Dict:

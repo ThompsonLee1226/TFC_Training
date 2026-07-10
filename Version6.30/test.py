@@ -85,11 +85,11 @@ def demo_full_cost_analysis():
     
     # 模拟各组件需求（从 BOM 推算，这里使用示例数据）
     component_needs = {
-        "c_pack": 150_000.0,   # Pack 需求量 15万升
-        "c_pet": 200_000.0,    # PET 需求量 20万升
-        "c_orange": 100_000.0, # Orange 需求量 10万升
-        "c_mango": 80_000.0,   # Mango 需求量 8万升
-        "c_vitc": 50_000.0,    # Vitamin C 需求量 5万升
+        "pack_1l":   150_000.0,   # Pack 需求量 15万升
+        "pet":       200_000.0,   # PET 需求量 20万升
+        "orange":    100_000.0,   # Orange 需求量 10万升
+        "mango":      80_000.0,   # Mango 需求量 8万升
+        "vitamin_c":  50_000.0,   # Vitamin C 需求量 5万升
     }
     
     print("\n📋 组件需求量（26周）")
@@ -129,11 +129,11 @@ def demo_scenario_comparison():
     # 场景1：使用默认配置
     print("\n🔹 场景 1：默认配置")
     component_needs = {
-        "c_pack": 150_000.0,
-        "c_pet": 200_000.0,
-        "c_orange": 100_000.0,
-        "c_mango": 80_000.0,
-        "c_vitc": 50_000.0,
+        "pack_1l":   150_000.0,
+        "pet":       200_000.0,
+        "orange":    100_000.0,
+        "mango":      80_000.0,
+        "vitamin_c":  50_000.0,
     }
     result1 = calculate_purchase_costs(component_needs)
     print(f"  总采购成本：{result1['total_purchase'] + result1['total_transport']:>15,.2f} €")
@@ -195,14 +195,14 @@ def demo_what_if_analysis():
     SUPPLIER_DECISIONS[supplier_id]["delivery_reliability_pct"] = 90.0
     ci_90 = predict_supplier_ci(supplier_id)
     SUPPLIER_DECISIONS[supplier_id]["delivery_reliability_pct"] = original_reliability
-    print(f"{'可靠性: 82% → 90%':<30} {ci_90 - base_ci:>+15.6f}")
-    
+    print(f"{'可靠性: 96% → 90%':<30} {ci_90 - base_ci:>+15.6f}")
+
     # 测试付款期限变化
     original_payment = SUPPLIER_DECISIONS[supplier_id]["payment_term_weeks"]
-    SUPPLIER_DECISIONS[supplier_id]["payment_term_weeks"] = 4
-    ci_4w = predict_supplier_ci(supplier_id)
+    SUPPLIER_DECISIONS[supplier_id]["payment_term_weeks"] = 8
+    ci_8w = predict_supplier_ci(supplier_id)
     SUPPLIER_DECISIONS[supplier_id]["payment_term_weeks"] = original_payment
-    print(f"{'付款期限: 7周 → 4周':<30} {ci_4w - base_ci:>+15.6f}")
+    print(f"{'付款期限: 4周 → 8周':<30} {ci_8w - base_ci:>+15.6f}")
     
     # 测试贸易单位变化
     original_unit = SUPPLIER_DECISIONS[supplier_id]["trade_unit"]

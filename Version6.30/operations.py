@@ -37,15 +37,15 @@ OPERATIONS_CONFIG: Dict = {
             "NO8DO Mango":              True,
             "Mono Packaging Materials": False,
             "Miami Oranges":            True,
-            "Philip Jones Plastics":    True,
-            "SYI":                      True,
+            "Platin PET":               True,
+            "AlL Vitamins":             True,
         },
 
         # ── Raw materials warehouse ──
         "raw_materials_warehouse": {
-            "pallet_locations":   1000,  # Number of pallet locations
-            "permanent_employees":   5,  # Number of permanent employees (FTE)
-            "intake_time_days":      3,  # Intake time (days)
+            "pallet_locations":   866,  # Number of pallet locations
+            "permanent_employees":   4,  # Number of permanent employees (FTE)
+            "intake_time_days":      4,  # Intake time (days)
         },
     },
 
@@ -133,9 +133,9 @@ OPERATIONS_CONFIG: Dict = {
             #   None / "yoghurt" / "ice_cream" / "tissue"
             "mcc_type": None,
             # Number of pallet locations
-            "pallet_locations": 1400,
+            "pallet_locations": 1350,
             # Number of permanent employees (FTE)
-            "permanent_employees": 4,
+            "permanent_employees": 5,
         },
         # Carrier 选择在 Supply Chain 页面，此处仅记录
     },
@@ -246,6 +246,8 @@ class ProductionResult:
     actual_by_product: Dict[str, float] = field(default_factory=dict)
     # 因 batch_min 约束导致的超额生产总量
     excess_from_batch_min: float = 0.0
+    # 启动产能损失导致的废品材料成本（应归入 P&L Stock Risk 而非 Production）
+    waste_material_cost: float = 0.0
 
 
 class ProductionSimulator:
@@ -347,7 +349,7 @@ class ProductionSimulator:
         # (per operations_info.txt:2-5, purchasing_info.txt:47-48)
         inspection = _cfg("inbound.raw_materials_inspection", {})
         if inspection.get("Mono Packaging Materials", False) or \
-           inspection.get("Philip Jones Plastics", False):
+           inspection.get("Platin PET", False):
             daily_prob *= 0.80  # 包装检验额外降低 20% 故障概率
 
         # 包装材料供应商质量 → 影响故障概率 (per purchasing_info.txt:47-48)
@@ -1059,6 +1061,8 @@ class ProductionSimulator:
                     avg_material_cost += mat_cost * (liters / total_weekly_liters)
                 waste_material_cost = total_startup_loss * avg_material_cost
 
+        result.waste_material_cost = waste_material_cost
+
         # ── 6) 汇总成本 ──
         result.mixing_cost = sum(
             d.mixing_fixed_cost + d.mixing_variable_cost
@@ -1227,14 +1231,16 @@ def calculate_project_costs() -> dict:
         details["pet_inflate"] = 140000.0 * half
         investment_delta += 700000.0
 
-    # Breakdown training: €400 × 操作员总数（所有班次 + 额外生产人员）
-    training = _cfg("bottling.general_settings.solve_breakdowns_training", "No")
-    if training == "Yes":
-        line_spec = get_bottling_line_spec()
-        shifts = _cfg("bottling.shifts_per_week", 2)
-        # 操作员 = 灌装线操作员 × 班次 + 额外生产人员（混合器操作员、主管、质检、维护）
-        total_operators = line_spec.num_operators * shifts + ProductionSimulator.ADDITIONAL_PRODUCTION_STAFF
-        details["breakdown_training"] = 400.0 * total_operators
+    # Breakdown training: €400 × 操作员总数
+    # 注：游戏中此费用不单独列在 Project costs 下（仅 SMED 在 Project costs），
+    # 培训成本已隐含在 overhead / production labor 中，此处不再重复计入 project。
+    # 如需启用培训成本追踪，取消下面注释：
+    # training = _cfg("bottling.general_settings.solve_breakdowns_training", "No")
+    # if training == "Yes":
+    #     line_spec = get_bottling_line_spec()
+    #     shifts = _cfg("bottling.shifts_per_week", 2)
+    #     total_operators = line_spec.num_operators * shifts + ProductionSimulator.ADDITIONAL_PRODUCTION_STAFF
+    #     details["breakdown_training"] = 400.0 * total_operators
 
     # MCC: €10,000/year
     outsource = _cfg("outbound.finished_goods_warehouse.outsource_type", "None")

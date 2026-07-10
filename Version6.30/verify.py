@@ -1,12 +1,12 @@
 """
 TFC 仿真验证 — 与 Round 3 实际游戏数据对标
 
-实际数据 (从 Finance 页面 Round 3):
-  ROI: 6.15%
-  Revenue: EUR 2,655,320
-  Gross Margin: EUR 1,376,266
-  Operating Profit: EUR 235,137
-  Investment: EUR 3,820,615
+实际数据 (从 FinanceReport.csv Round 3):
+  ROI: 4.0%
+  Revenue: EUR 2,650,296.43
+  Gross Margin: EUR 1,335,476.70
+  Operating Profit: EUR 155,411.40
+  Investment: EUR 3,888,476.57
 """
 import sys
 import os
@@ -42,13 +42,13 @@ def verify():
     inv = result.inv
 
     actual = {
-        "ROI (%)": 6.15,
-        "Revenue": 2_655_320,
-        "Gross Margin": 1_376_266,
-        "Operating Profit": 235_137,
-        "Investment": 3_820_615,
-        "COGS (%)": 48.2,
-        "Profit (%)": 8.86,
+        "ROI (%)": 4.0,
+        "Revenue": 2_650_296,
+        "Gross Margin": 1_335_477,
+        "Operating Profit": 155_411,
+        "Investment": 3_888_477,
+        "COGS (%)": 49.6,
+        "Profit (%)": 5.86,
     }
 
     simulated = {

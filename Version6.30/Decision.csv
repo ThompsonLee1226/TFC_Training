@@ -1,0 +1,80 @@
+﻿Purchasing,pack,PET,Orange,Mango,Vitamin C
+CI,0.993,0.996,1.004,1.0564,1.031
+Quality,High,High,High,High,High
+Lead time (days),15,15,30,10,20
+Certification,FALSE,TRUE,TRUE,TRUE,TRUE
+Country,France,France,United States,Spain,France
+Transport mode,Truck,Truck,Boat,Truck,Truck
+Free capacity,18%,6%,38%,4%,45%
+Payment term (weeks),4,4,4,4,4
+Trade unit,Pallet,Pallet,Tank,IBC,Drum
+Agreed delivery reliability,96%,96%,98%,96%,96%
+Delivery window (days),1,1,1,2,1
+,,,,,
+Sales Shortage rule,Proportional,,,,
+,,,,,
+Customer,Food&Groceries,LAND Market,Dominick's,,
+Fressie Orange 1 liter,TRUE,TRUE,FALSE,,
+Fressie Orange/C-power 1 liter,TRUE,TRUE,FALSE,,
+Fressie Orange/Mango 1 liter,TRUE,TRUE,FALSE,,
+Fressie Orange PET,TRUE,TRUE,TRUE,,
+Fressie Orange/C-power 1 PET,TRUE,TRUE,TRUE,,
+Fressie Orange/Mango PET,TRUE,TRUE,TRUE,,
+CI,0.9985,0.957,0.9977,,
+Service level type,Order lines,Order lines,Order lines,,
+Service level (%),95,95,95,,
+Shelf life (%),75,75,70,,
+Order deadline,14,14,14,,
+Trade unit,Pallet layer,Pallet layer,Pallet layer,,
+Payment term (weeks),3,3,4,,
+Promotional pressure,Middle,Middle,Heavy,,
+Promotion horizon,Short,Short,Short,,
+,,,,,
+Product forecasting,Weekly demand,Increase or decrease,Forecast,,
+Fressie Orange 1 liter,67400,0,67400,,
+Fressie Orange/C-power 1 liter,11400,0,11400,,
+Fressie Orange/Mango 1 liter,42200,0,42200,,
+Fressie Orange PET,118100,5%,124005,,
+Fressie Orange/C-power 1 PET,17700,5%,18585,,
+Fressie Orange/Mango PET,51000,5%,53550,,
+,,,,,
+Supplier,NO8DO Mango,Mono Packaging Materials,Miami Oranges,AlL Vitamins,Platin PET
+Product range,Mango,Pack,Orange,Vitamin C,PET
+Country,Spain,France,United States,France,France
+Market share world market,8%,1%,8%,20%,1%
+Start payment term,When ordering,At delivery,When ordering,At delivery,At delivery
+Lead time (days),46320,15,30,20,15
+Costs per shipment,100.00 / 100.00,100,125,100,125
+Transport costs per Pallet/Drum/IBC,30.00 / 20.00,20,40,24,25
+Transport costs per FTL/Tank truck,750.00 / 500.00,500,1000,600,625
+Free capacity (excluding TFC),0.09,26%,40%,50%,12%
+Free capacity (including TFC),0.04,18%,38%,45%,6%
+Basic contract index,1.05,0.98,1,1,0.98
+Certification,Yes,No,Yes,Yes,Yes
+,,,,,
+,Raw materials warehouse,Finished goods warehouse,,,
+Number of pallet locations,866,1350,,,
+Number of permanent employees (FTE),4,5,,,
+Intake time (days),4,,,,
+,,,,,
+Line settings,Swiss Fill 2,,,,
+Number of shifts,2,,,,
+SMED action,TRUE,,,,
+Increase speed,FALSE,,,,
+,,,,,
+Stock management components,Safety stock (weeks),Lot size (weeks),,,
+Pack 1 liter,1.5,3,,,
+PET,2.1,3,,,
+Orange,1.5,3,,,
+Mango,2,3,,,
+Vitamin C,2.8,4,,,
+,,,,,
+Frozen period of production (weeks),3,,,,
+,,,,,
+Stock management of finished goods ,Production intervals (days),Safety stock (weeks),,,
+Fressie Orange 1 liter,10,2.5,,,
+Fressie Orange/C-power 1 liter,10,2.8,,,
+Fressie Orange/Mango 1 liter,10,2,,,
+Fressie Orange PET,9,2.5,,,
+Fressie Orange/C-power 1 PET,10,3,,,
+Fressie Orange/Mango PET,9,3,,,

@@ -71,6 +71,7 @@ def run() -> SimulationResult:
     # 生产模拟器
     prod_sim = operations.ProductionSimulator(seed=RANDOM_SEED)
     total_production_cost = 0.0
+    total_waste_material_cost = 0.0  # 启动废品材料成本（应归入 Stock Risk）
 
     # 日级销售模拟器
     daily_sales_sim = sales.DailySalesSimulator(seed=RANDOM_SEED)
@@ -204,6 +205,7 @@ def run() -> SimulationResult:
             prod_result = prod_sim.simulate_week(week, plan,
                                                  component_stock=current_comp_stock)
         total_production_cost += prod_result.total_production_cost
+        total_waste_material_cost += getattr(prod_result, 'waste_material_cost', 0.0)
         actual_produced = prod_result.actual_liters
         total_produced_liters += actual_produced
 
@@ -341,19 +343,20 @@ def run() -> SimulationResult:
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 汇总 — 采购成本
-    # BOM-based 计算（理论消耗），同时交叉验证实际下单量
+    # BOM 计算为理论下限，实际下单含库存 buildup（安全库存+提前期覆盖）
+    # 优先使用实际下单追踪值，确保采购成本包含库存 buildup
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     purch = purchasing.calculate_purchase_costs(component_needs)
     total_purchase = purch["total_purchase"]
     total_inbound_transport = purch["total_transport"]
 
-    # 实际下单总量（从库存仿真追踪），用于验证 BOM 推算是否合理
-    if total_components_ordered > 0:
-        # 理论 vs 实际差异在 ±20% 以内忽略，否则使用实际下单量
-        ratio = total_components_ordered / max(total_purchase, 1.0)
-        if ratio < 0.8 or ratio > 1.2:
-            # 实际下单量与 BOM 推算偏差大，使用实际下单量
-            total_purchase = total_components_ordered
+    # 实际下单总量（从库存仿真追踪），含库存 buildup
+    # 始终取 BOM 与实际下单的最大值（BOM 为理论下限）
+    if total_components_ordered > total_purchase:
+        total_purchase = total_components_ordered
+    elif total_components_ordered > 0 and total_components_ordered < total_purchase * 0.85:
+        # 实际下单显著低于 BOM（异常情况），使用实际值
+        total_purchase = total_components_ordered
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 汇总 — 仓储 & 库存
@@ -424,11 +427,33 @@ def run() -> SimulationResult:
 
     # ── 原料仓库综合成本（per operations_info.txt:4-32）──
     # 包含：托盘位空间费 + 罐区外包费 + 永久员工 + 灵活工
-    rm_daily_pallets = total_inbound_pallets / (WEEKS_PER_ROUND * 5) if total_inbound_pallets > 0 else 0.0
-    # 罐区日均使用: 液体组件总量（升）/ tank容量 / 工作天数
-    liquid_needs = sum(component_needs.get(cid, 0) for cid in ["orange", "mango", "vitamin_c"])
-    rm_daily_tanks = liquid_needs / 30000.0 / (WEEKS_PER_ROUND * 5) if liquid_needs > 0 else 0.0
-    num_inbound_deliveries = num_suppliers * WEEKS_PER_ROUND  # 每家供应商每周一次交货
+    # 包装组件托盘（仅 pack_1l + pet，液体走罐区）
+    pack_pallets = 0.0
+    for cid in ["pack_1l", "pet"]:
+        c = supplychain.COMPONENT_MAP.get(cid)
+        if c and c.pallet_content:
+            pack_pallets += component_needs.get(cid, 0) / c.pallet_content
+    rm_daily_pallets = pack_pallets / (WEEKS_PER_ROUND * 5) if pack_pallets > 0 else 0.0
+    # 罐区日均使用: 基于预期液体库存（安全库存 + 提前期管道库存）
+    # 稳态平均库存 ≈ 周需求 × (安全库存周数 + 提前期周数/2)
+    avg_liquid_inventory = 0.0
+    for cid in ["orange", "mango", "vitamin_c"]:
+        weekly_need = weekly_comp_needs.get(cid, 0.0)
+        ss_weeks = sc_cfg["safety_stock_weeks"].get(cid, 2.0)
+        sid = supplier_for_component.get(cid, "")
+        lt_days = purchasing.get_supplier_lead_time(sid) if sid else 7
+        lt_weeks = max(1, round(lt_days / 7))
+        avg_inv = weekly_need * (ss_weeks + lt_weeks / 2.0)
+        avg_liquid_inventory += avg_inv
+    rm_daily_tanks = avg_liquid_inventory / 30000.0 if avg_liquid_inventory > 0 else 0.0
+    # 液体供应商交货次数：每 lot_size 周一次
+    num_liquid_suppliers = sum(1 for cid in ["orange", "mango", "vitamin_c"]
+                               if component_needs.get(cid, 0) > 0)
+    liq_lot_weeks = min(
+        sc_cfg["lot_size_weeks"].get("orange", 3),
+        sc_cfg["lot_size_weeks"].get("mango", 3),
+        sc_cfg["lot_size_weeks"].get("vitamin_c", 4))
+    num_inbound_deliveries = max(1, round(num_liquid_suppliers * WEEKS_PER_ROUND / max(1, liq_lot_weeks)))
     rm_perm_employees = ops_inbound.get("permanent_employees", 5)
 
     rm_wh = operations.calculate_warehouse_cost_raw_materials(
@@ -523,7 +548,8 @@ def run() -> SimulationResult:
     pl.contracted_sales_revenue = total_revenue
     pl.bonus_or_penalty = bonus_penalty_total
     pl.purchase_costs = (total_purchase + total_inbound_transport) * PURCHASE_COST_FACTOR
-    pl.production_costs = total_production_cost
+    # 生产纯成本（剔除废品材料损失，后者归入 Stock Risk 对齐游戏 P&L）
+    pl.production_costs = total_production_cost - total_waste_material_cost
     pl.overhead_costs = overhead
     pl.stock_costs_interest = stock_interest * STOCK_INTEREST_FACTOR
     # ── contract_costs ──
@@ -539,7 +565,9 @@ def run() -> SimulationResult:
         rm_wh["tank_yard_cost"] +         # 罐区外包（含 €25/天 + €10 intake + €100 delivery）
         wh_costs["overflow"]              # 溢出仓库费
     ) * STOCK_SPACE_FACTOR
-    pl.stock_costs_risk = STOCK_RISK_BASELINE + total_obsoletes
+    # Stock Risk = 废品材料损失（启动产能损失） + 过期报废 + 基准损耗
+    # 对齐游戏 P&L: "Costs of scrap" = "Risk"
+    pl.stock_costs_risk = STOCK_RISK_BASELINE + total_waste_material_cost + total_obsoletes
     # 搬运人工成本：永久员工工资 + 灵活工费用 + 来料检验固定费
     pl.handling_costs = (
         rm_wh["perm_labor_cost"] + rm_wh["flex_labor_cost"] +

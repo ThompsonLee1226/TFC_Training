@@ -22,24 +22,47 @@ from config import WEEKS_PER_ROUND
 
 SUPPLY_CHAIN_CONFIG = {
     # ── 安全库存（周数）per component ──
+    # 来源: Decision.csv Row 65-70
     "safety_stock_weeks": {
-        "pack_1l":    2.5,
-        "pet":        2.7,
-        "orange":     1.0,
-        "mango":      2.3,
-        "vitamin_c":  3.5,
+        "pack_1l":    1.5,
+        "pet":        2.1,
+        "orange":     1.5,
+        "mango":      2.0,
+        "vitamin_c":  2.8,
     },
     # ── 批次大小（周数）per component ──
+    # 来源: Decision.csv Row 65-70
     "lot_size_weeks": {
-        "pack_1l":    1.8,
-        "pet":        2.0,
-        "orange":     1.5,
-        "mango":      2.2,
-        "vitamin_c":  2.2,
+        "pack_1l":    3,
+        "pet":        3,
+        "orange":     3,
+        "mango":      3,
+        "vitamin_c":  4,
     },
     # ── 生产计划冻结期（周）──
-    "frozen_period_weeks": 2,
+    # 来源: Decision.csv Row 72
+    "frozen_period_weeks": 3,
     "production_interval_weeks": 1,
+    # ── 成品安全库存（周数）──
+    # 来源: Decision.csv Row 74-80
+    "fg_safety_stock_weeks": {
+        "p_orange_1l":  2.5,
+        "p_ocp_1l":     2.8,
+        "p_om_1l":      2.0,
+        "p_orange_pet": 2.5,
+        "p_ocp_pet":    3.0,
+        "p_om_pet":     3.0,
+    },
+    # ── 成品生产间隔（天）──
+    # 来源: Decision.csv Row 74-80
+    "fg_production_intervals_days": {
+        "p_orange_1l":  10,
+        "p_ocp_1l":     10,
+        "p_om_1l":      10,
+        "p_orange_pet":  9,
+        "p_ocp_pet":    10,
+        "p_om_pet":      9,
+    },
 }
 
 

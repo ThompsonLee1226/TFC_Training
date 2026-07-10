@@ -33,28 +33,28 @@ PRODUCTION_NOISE_STD = 0.03    # 生产效率 ±3%
 COST_NOISE_STD = 0.04          # 成本波动 ±4%
 
 # ═══════════════════════════════════════════════════════════════
-# Round 3 实际财务基线（来自 Finance 页面，用于标定/验证）
+# Round 3 实际财务基线（来自 FinanceReport.csv，用于标定/验证）
 # ═══════════════════════════════════════════════════════════════
 BASELINE = {
-    "revenue":              2_655_320.0,
-    "purchase_costs":         815_273.0,
-    "production_costs":       463_781.0,
-    "overhead_energy":        142_354.0,
-    "overhead_water":          39_807.0,
-    "overhead_other":         146_923.0,
-    "stock_interest":          16_669.0,
-    "stock_space":            258_553.0,
-    "stock_risk":             13_266.0,
-    "handling_inbound":       103_390.0,
-    "handling_outbound":       80_811.0,
-    "admin_cost":             111_052.0,
-    "distribution":           192_114.0,
-    "project_cost":            14_000.0,
-    "interest_ar_ap":          22_190.0,
+    "revenue":              2_650_296.43,
+    "purchase_costs":         860_934.88,
+    "production_costs":       453_884.85,
+    "overhead_energy":        146_876.35,
+    "overhead_water":          27_749.35,
+    "overhead_other":         146_451.81,
+    "stock_interest":          21_820.82,
+    "stock_space":            281_207.39,
+    "stock_risk":             24_421.75,
+    "handling_inbound":        94_262.37,
+    "handling_outbound":      101_336.41,
+    "admin_cost":             110_044.35,
+    "distribution":           193_767.28,
+    "project_cost":            10_000.0,
+    "interest_ar_ap":          22_127.42,
     "fixed_building":       2_500_000.0,
-    "inventory_components":   222_252.0,
+    "inventory_components":   290_944.33,
     "machinery":              802_500.0,
-    "payment_terms_net":      295_863.0,
-    "operating_profit":       235_137.0,
-    "roi":                      6.15,
+    "payment_terms_net":      295_032.25,
+    "operating_profit":       155_411.40,
+    "roi":                      4.0,
 }

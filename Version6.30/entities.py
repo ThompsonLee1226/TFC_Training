@@ -39,6 +39,7 @@ class PromotionalPressure(Enum):
     LOW = "Low"
     MIDDLE = "Middle"
     HIGH = "High"
+    HEAVY = "Heavy"
 
 class PromotionHorizon(Enum):
     SHORT = "Short"
@@ -170,12 +171,12 @@ class FacilityConfig:
 class WarehouseConfig:
     """仓库配置"""
     # 原料仓库
-    raw_materials_pallet_locations: int = 1000
-    raw_materials_perm_employees: int = 5
-    raw_materials_intake_days: int = 3
+    raw_materials_pallet_locations: int = 866
+    raw_materials_perm_employees: int = 4
+    raw_materials_intake_days: int = 4
     # 成品仓库
-    finished_goods_pallet_locations: int = 750
-    finished_goods_perm_employees: int = 4
+    finished_goods_pallet_locations: int = 1350
+    finished_goods_perm_employees: int = 5
     # 冷藏成品仓库
     chilled_finished_goods_pallet_locations: int = 200
     # 罐区
@@ -219,38 +220,38 @@ COMPONENT_MAP = {c.id: c for c in COMPONENTS}
 SUPPLIERS = [
     Supplier(id="s_pack", name="Mono Packaging Materials", component_id="pack_1l",
              country="France", distance_km=500, transport_mode=TransportMode.TRUCK,
-             lead_time_days=15, free_capacity_pct=18.0, certification=True,
-             market_share_pct=25.0, contract_index=0.9468, quality=Quality.HIGH,
-             payment_term_weeks=7, trade_unit=TradeUnit.PALLET,
-             delivery_reliability_pct=82.0, delivery_window=DeliveryWindow.ONE_DAY,
+             lead_time_days=15, free_capacity_pct=18.0, certification=False,
+             market_share_pct=1.0, contract_index=0.993, quality=Quality.HIGH,
+             payment_term_weeks=4, trade_unit=TradeUnit.PALLET,
+             delivery_reliability_pct=96.0, delivery_window=DeliveryWindow.ONE_DAY,
              base_price=0.030),
-    Supplier(id="s_pet", name="Philip Jones Plastics", component_id="pet",
-             country="Netherlands", distance_km=100, transport_mode=TransportMode.TRUCK,
-             lead_time_days=5, free_capacity_pct=5.0, certification=True,
-             market_share_pct=30.0, contract_index=1.0102, quality=Quality.MIDDLE,
-             payment_term_weeks=5, trade_unit=TradeUnit.PALLET,
-             delivery_reliability_pct=93.0, delivery_window=DeliveryWindow.ONE_DAY,
+    Supplier(id="s_pet", name="Platin PET", component_id="pet",
+             country="France", distance_km=500, transport_mode=TransportMode.TRUCK,
+             lead_time_days=15, free_capacity_pct=6.0, certification=True,
+             market_share_pct=1.0, contract_index=0.996, quality=Quality.HIGH,
+             payment_term_weeks=4, trade_unit=TradeUnit.PALLET,
+             delivery_reliability_pct=96.0, delivery_window=DeliveryWindow.ONE_DAY,
              base_price=0.030),
     Supplier(id="s_orange", name="Miami Oranges", component_id="orange",
              country="United States", distance_km=7500, transport_mode=TransportMode.BOAT,
              lead_time_days=30, free_capacity_pct=38.0, certification=True,
-             market_share_pct=15.0, contract_index=1.0091, quality=Quality.HIGH,
-             payment_term_weeks=8, trade_unit=TradeUnit.TANK,
+             market_share_pct=8.0, contract_index=1.004, quality=Quality.HIGH,
+             payment_term_weeks=4, trade_unit=TradeUnit.TANK,
              delivery_reliability_pct=98.0, delivery_window=DeliveryWindow.ONE_DAY,
              base_price=0.400),
     Supplier(id="s_mango", name="NO8DO Mango", component_id="mango",
              country="Spain", distance_km=1800, transport_mode=TransportMode.TRUCK,
              lead_time_days=10, free_capacity_pct=4.0, certification=True,
-             market_share_pct=20.0, contract_index=1.0116, quality=Quality.HIGH,
-             payment_term_weeks=7, trade_unit=TradeUnit.IBC,
-             delivery_reliability_pct=84.0, delivery_window=DeliveryWindow.ONE_DAY,
+             market_share_pct=8.0, contract_index=1.0564, quality=Quality.HIGH,
+             payment_term_weeks=4, trade_unit=TradeUnit.IBC,
+             delivery_reliability_pct=96.0, delivery_window=DeliveryWindow.TWO_DAYS,
              base_price=0.900),
-    Supplier(id="s_vitc", name="SYI", component_id="vitamin_c",
-             country="Netherlands", distance_km=80, transport_mode=TransportMode.TRUCK,
-             lead_time_days=4, free_capacity_pct=29.0, certification=True,
-             market_share_pct=10.0, contract_index=1.0518, quality=Quality.HIGH,
-             payment_term_weeks=6, trade_unit=TradeUnit.IBC,
-             delivery_reliability_pct=98.0, delivery_window=DeliveryWindow.FOUR_HOURS,
+    Supplier(id="s_vitc", name="AlL Vitamins", component_id="vitamin_c",
+             country="France", distance_km=500, transport_mode=TransportMode.TRUCK,
+             lead_time_days=20, free_capacity_pct=45.0, certification=True,
+             market_share_pct=20.0, contract_index=1.031, quality=Quality.HIGH,
+             payment_term_weeks=4, trade_unit=TradeUnit.DRUM,
+             delivery_reliability_pct=96.0, delivery_window=DeliveryWindow.ONE_DAY,
              base_price=0.150),
 ]
 
@@ -260,25 +261,25 @@ SUPPLIER_BY_COMPONENT = {s.component_id: s for s in SUPPLIERS}
 # ── 客户 ──
 
 CUSTOMERS = [
-    Customer(id="c_fg", name="Food & Groceries", contract_index=1.0085,
+    Customer(id="c_fg", name="Food & Groceries", contract_index=0.9985,
              service_level_type=ServiceLevelType.ORDER_LINES,
              service_level_pct=95.0, shelf_life_pct=75.0,
-             order_deadline="20:00", trade_unit=TradeUnit.PALLET_LAYER,
-             payment_term_weeks=4, promotional_pressure=PromotionalPressure.MIDDLE,
+             order_deadline="14:00", trade_unit=TradeUnit.PALLET_LAYER,
+             payment_term_weeks=3, promotional_pressure=PromotionalPressure.MIDDLE,
              promotion_horizon=PromotionHorizon.SHORT, vmi=False,
              weekly_demand_liters=50000.0),
-    Customer(id="c_land", name="LAND Market", contract_index=0.9695,
+    Customer(id="c_land", name="LAND Market", contract_index=0.957,
              service_level_type=ServiceLevelType.ORDER_LINES,
-             service_level_pct=96.0, shelf_life_pct=75.0,
-             order_deadline="17:00", trade_unit=TradeUnit.PALLET_LAYER,
-             payment_term_weeks=4, promotional_pressure=PromotionalPressure.MIDDLE,
+             service_level_pct=95.0, shelf_life_pct=75.0,
+             order_deadline="14:00", trade_unit=TradeUnit.PALLET_LAYER,
+             payment_term_weeks=3, promotional_pressure=PromotionalPressure.MIDDLE,
              promotion_horizon=PromotionHorizon.SHORT, vmi=False,
              weekly_demand_liters=25000.0),
-    Customer(id="c_dom", name="Dominick's", contract_index=1.0237,
+    Customer(id="c_dom", name="Dominick's", contract_index=0.9977,
              service_level_type=ServiceLevelType.ORDER_LINES,
-             service_level_pct=96.0, shelf_life_pct=75.0,
-             order_deadline="12:00", trade_unit=TradeUnit.PALLET,
-             payment_term_weeks=4, promotional_pressure=PromotionalPressure.MIDDLE,
+             service_level_pct=95.0, shelf_life_pct=70.0,
+             order_deadline="14:00", trade_unit=TradeUnit.PALLET_LAYER,
+             payment_term_weeks=4, promotional_pressure=PromotionalPressure.HEAVY,
              promotion_horizon=PromotionHorizon.SHORT, vmi=False,
              weekly_demand_liters=28000.0),
 ]
