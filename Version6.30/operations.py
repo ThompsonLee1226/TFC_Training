@@ -687,6 +687,52 @@ class ProductionSimulator:
             quotas = {f: group_demand.get(f, 0) / total_demand * n
                      for f, _ in groups} if total_demand > 0 else {f: 1 for f, _ in groups}
             raw_days = {f: max(1, int(quotas[f])) for f in quotas}
+
+            # ── 最低可行天数检查 ──
+            # 估算每个口味组在单日内的最大产能（含 makespan 约束），
+            # 确保高需求组不会被取整剥夺必要的生产日。
+            line_spec = get_bottling_line_spec()
+            mixer_spec_local = get_mixer_spec()
+            daily_h = self._daily_available_hours()
+            # 单日换型时间：组内 2 个产品 → 1 次尺寸换型（SMED 后 ~2.8h）
+            co_1day = line_spec.size_changeover_hours
+            if _cfg("bottling.smed_action", False):
+                co_1day *= 0.7
+            eff_h = max(1.0, daily_h - co_1day - 0.3)  # 扣除换型+预估故障
+            cap_per_h = float(line_spec.capacity_liters_per_hour)
+            # 混合约束：估算单日最多批次数
+            max_batches_per_day = max(1, int(eff_h / mixer_spec_local.run_time_hours))
+            batch_max = mixer_spec_local.batch_max_liters
+            # 单日产能 ≈ min(灌装, 混合批量上限) × makespan折扣
+            bottling_cap = eff_h * cap_per_h
+            mixing_cap = max_batches_per_day * batch_max
+            single_day_cap = min(bottling_cap, mixing_cap) * 0.88  # makespan 折扣
+
+            # 检查并修正：需求超过分配天数产能的组，从过剩组借天数
+            deficit_groups = []
+            surplus_groups = []
+            for f, _ in groups:
+                d = group_demand.get(f, 0)
+                needed = max(1, int(d / single_day_cap + 0.99)) if d > 0 else 1
+                if raw_days[f] < needed:
+                    deficit_groups.append((f, needed - raw_days[f]))
+                elif raw_days[f] > needed:
+                    surplus_groups.append((f, raw_days[f] - needed, quotas.get(f, 0) % 1.0))
+
+            for def_f, def_days in deficit_groups:
+                for _ in range(def_days):
+                    if not surplus_groups:
+                        break
+                    # 从过剩最多（或小数部分最小）的组借 1 天
+                    surplus_groups.sort(key=lambda x: (x[1], x[2]), reverse=True)
+                    sur_f, sur_excess, _ = surplus_groups[0]
+                    if raw_days[sur_f] > 1:
+                        raw_days[sur_f] -= 1
+                        raw_days[def_f] += 1
+                        surplus_groups[0] = (sur_f, sur_excess - 1, 0)
+                        if surplus_groups[0][1] <= 0:
+                            surplus_groups.pop(0)
+
             # 调整至恰好 n 天
             total_alloc = sum(raw_days.values())
             by_frac = sorted(raw_days, key=lambda f: quotas[f] % 1.0)
