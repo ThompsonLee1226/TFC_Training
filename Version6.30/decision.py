@@ -42,14 +42,17 @@ TFC 橙汁游戏 — 统一决策变量管理
   └──────────────────────────────────────────────────────────────────┘
 
 使用方法:
-    from decision import DECISION_CONFIG
+    from decision import DECISION_CONFIG, get_decision, set_decision, apply_decisions
 
     # 读取供应商 Pack 的质量等级
-    quality = DECISION_CONFIG["purchasing"]["supplier_decisions"]["s_pack"]["quality"]
+    quality = get_decision("purchasing.supplier_decisions.s_pack.quality")
 
     # RL Agent 修改决策
-    DECISION_CONFIG["operations"]["bottling"]["shifts_per_week"] = 3
-    DECISION_CONFIG["supply_chain"]["safety_stock_weeks"]["orange"] = 2.0
+    set_decision("operations.bottling.shifts_per_week", 3)
+    set_decision("supply_chain.safety_stock_weeks.orange", 2.0)
+
+    # 应用决策到各原始模块
+    apply_decisions()
 
     # 验证决策合法性
     from decision import validate_decisions
@@ -112,8 +115,8 @@ PRODUCTION_INTERVAL_RANGE = (1, 14)         # min, max days
 DECISION_CONFIG: Dict[str, Any] = {
 
     # ╔══════════════════════════════════════════════════════════════════════════╗
-    # ║  1. purchasing — 供应商决策                                             ║
-    # ║     对应游戏 Purchasing 页面的每个供应商 SLA 设置                         ║
+    # ║  1. purchasing — 供应商决策                                                ║
+    # ║     对应游戏 Purchasing 页面的每个供应商 SLA 设置                              ║
     # ╚══════════════════════════════════════════════════════════════════════════╝
     "purchasing": {
 
@@ -602,10 +605,23 @@ DECISION_CONFIG: Dict[str, Any] = {
             },
             "customer_priority": {
                 "description": "客户优先级（仅 priority 规则生效，数值越小优先级越高）",
-                "data": {
-                    "c_fg":   1,
-                    "c_dom":  2,
-                    "c_land": 3,
+                "c_fg": {
+                    "value": 1,
+                    "type": "int",
+                    "range": (1, 3),
+                    "description": "Food & Groceries 优先级"
+                },
+                "c_dom": {
+                    "value": 2,
+                    "type": "int",
+                    "range": (1, 3),
+                    "description": "Dominick's 优先级"
+                },
+                "c_land": {
+                    "value": 3,
+                    "type": "int",
+                    "range": (1, 3),
+                    "description": "LAND Market 优先级"
                 },
             },
         },
@@ -615,6 +631,7 @@ DECISION_CONFIG: Dict[str, Any] = {
             "weights": {
                 "value": [0.20, 0.20, 0.20, 0.20, 0.20],
                 "type": "list[float]",
+                "sum_to_one": True,
                 "description": "每日需求权重（周一至周五），需归一化为 sum=1.0"
             },
             "noise_std": {
@@ -714,13 +731,41 @@ DECISION_CONFIG: Dict[str, Any] = {
             },
             "product_to_mixer": {
                 "description": "每个成品分配到哪个混合器",
-                "data": {
-                    "p_orange_1l":  "Fruitmix MQ",
-                    "p_ocp_1l":    "Fruitmix MQ",
-                    "p_om_1l":     "Fruitmix MQ",
-                    "p_orange_pet": "Fruitmix MQ",
-                    "p_ocp_pet":   "Fruitmix MQ",
-                    "p_om_pet":    "Fruitmix MQ",
+                "p_orange_1l": {
+                    "value": "Fruitmix MQ",
+                    "type": "categorical",
+                    "options": MIXER_NAMES,
+                    "description": "Orange 1L 混合器分配"
+                },
+                "p_ocp_1l": {
+                    "value": "Fruitmix MQ",
+                    "type": "categorical",
+                    "options": MIXER_NAMES,
+                    "description": "OCP 1L 混合器分配"
+                },
+                "p_om_1l": {
+                    "value": "Fruitmix MQ",
+                    "type": "categorical",
+                    "options": MIXER_NAMES,
+                    "description": "OM 1L 混合器分配"
+                },
+                "p_orange_pet": {
+                    "value": "Fruitmix MQ",
+                    "type": "categorical",
+                    "options": MIXER_NAMES,
+                    "description": "Orange PET 混合器分配"
+                },
+                "p_ocp_pet": {
+                    "value": "Fruitmix MQ",
+                    "type": "categorical",
+                    "options": MIXER_NAMES,
+                    "description": "OCP PET 混合器分配"
+                },
+                "p_om_pet": {
+                    "value": "Fruitmix MQ",
+                    "type": "categorical",
+                    "options": MIXER_NAMES,
+                    "description": "OM PET 混合器分配"
                 },
             },
             "production_sequence": {
@@ -802,13 +847,41 @@ DECISION_CONFIG: Dict[str, Any] = {
             # 产品到灌装线的分配
             "product_to_line": {
                 "description": "每个成品分配到哪条灌装线",
-                "data": {
-                    "p_orange_1l":  "Swiss Fill 2",
-                    "p_ocp_1l":    "Swiss Fill 2",
-                    "p_om_1l":     "Swiss Fill 2",
-                    "p_orange_pet": "Swiss Fill 2",
-                    "p_ocp_pet":   "Swiss Fill 2",
-                    "p_om_pet":    "Swiss Fill 2",
+                "p_orange_1l": {
+                    "value": "Swiss Fill 2",
+                    "type": "categorical",
+                    "options": BOTTLING_LINE_NAMES,
+                    "description": "Orange 1L 灌装线分配"
+                },
+                "p_ocp_1l": {
+                    "value": "Swiss Fill 2",
+                    "type": "categorical",
+                    "options": BOTTLING_LINE_NAMES,
+                    "description": "OCP 1L 灌装线分配"
+                },
+                "p_om_1l": {
+                    "value": "Swiss Fill 2",
+                    "type": "categorical",
+                    "options": BOTTLING_LINE_NAMES,
+                    "description": "OM 1L 灌装线分配"
+                },
+                "p_orange_pet": {
+                    "value": "Swiss Fill 2",
+                    "type": "categorical",
+                    "options": BOTTLING_LINE_NAMES,
+                    "description": "Orange PET 灌装线分配"
+                },
+                "p_ocp_pet": {
+                    "value": "Swiss Fill 2",
+                    "type": "categorical",
+                    "options": BOTTLING_LINE_NAMES,
+                    "description": "OCP PET 灌装线分配"
+                },
+                "p_om_pet": {
+                    "value": "Swiss Fill 2",
+                    "type": "categorical",
+                    "options": BOTTLING_LINE_NAMES,
+                    "description": "OM PET 灌装线分配"
                 },
             },
         },
@@ -1252,6 +1325,18 @@ def validate_decisions(config: Dict = None) -> List[str]:
                     errors.append(
                         f"{prefix}: expected bool, got {type(val).__name__}"
                     )
+
+            elif vt.startswith("list["):
+                if not isinstance(val, list):
+                    errors.append(
+                        f"{prefix}: expected list, got {type(val).__name__}"
+                    )
+                elif vt == "list[float]" and "sum_to_one" in node and node["sum_to_one"]:
+                    total = sum(val)
+                    if abs(total - 1.0) > 1e-6:
+                        errors.append(
+                            f"{prefix}: weights sum to {total:.6f}, expected 1.0"
+                        )
             return
 
         for key, child in node.items():
@@ -1272,108 +1357,156 @@ def sync_to_modules():
     """将 DECISION_CONFIG 的值同步到各原始模块的决策字典。
 
     调用此函数后再 import 并运行仿真，确保各模块使用统一决策。
+
+    Returns:
+        dict: {"ok": [成功同步的模块列表], "errors": [失败模块及错误信息]}
     """
-    # 同步 purchasing.py
-    import purchasing
-    for sid in SUPPLIER_IDS:
-        src = DECISION_CONFIG["purchasing"]["supplier_decisions"][sid]
-        purchasing.SUPPLIER_DECISIONS[sid] = {
-            k: src[k]["value"] for k in src
+    result = {"ok": [], "errors": []}
+
+    # ── 同步 purchasing.py ──
+    try:
+        import purchasing
+        for sid in SUPPLIER_IDS:
+            src = DECISION_CONFIG["purchasing"]["supplier_decisions"][sid]
+            purchasing.SUPPLIER_DECISIONS[sid] = {
+                k: src[k]["value"] for k in src
+            }
+        for cid in COMPONENT_IDS:
+            purchasing.DUAL_SOURCING[cid] = \
+                DECISION_CONFIG["purchasing"]["dual_sourcing"][cid]["value"]
+        result["ok"].append("purchasing")
+    except Exception as e:
+        result["errors"].append(f"purchasing: {e}")
+
+    # ── 同步 sales.py ──
+    try:
+        import sales
+        for cid in CUSTOMER_IDS:
+            src = DECISION_CONFIG["sales"]["customer_decisions"][cid]
+            sales.CUSTOMER_DECISIONS[cid] = {
+                k: src[k]["value"] for k in src
+            }
+        sales.SHORTAGE_RULE = DECISION_CONFIG["sales"]["shortage_settings"]["rule"]["value"]
+        sales.CUSTOMER_PRIORITY = {
+            cid: DECISION_CONFIG["sales"]["shortage_settings"]["customer_priority"][cid]["value"]
+            for cid in CUSTOMER_IDS
         }
-    for cid in COMPONENT_IDS:
-        purchasing.DUAL_SOURCING[cid] = \
-            DECISION_CONFIG["purchasing"]["dual_sourcing"][cid]["value"]
+        sales.DAILY_DEMAND_WEIGHTS = list(
+            DECISION_CONFIG["sales"]["daily_demand_settings"]["weights"]["value"]
+        )
+        sales.DAILY_DEMAND_NOISE_STD = \
+            DECISION_CONFIG["sales"]["daily_demand_settings"]["noise_std"]["value"]
+        sales.VMI_COST_ANNUAL = \
+            DECISION_CONFIG["sales"]["promo_settings"]["vmi_cost_annual"]["value"]
+        sales.VALUE_FOR_MONEY_CUSTOMERS = \
+            DECISION_CONFIG["sales"]["promo_settings"]["value_for_money_customers"]["data"]
+        sales.SLOWMOVER_COMBINATIONS = \
+            DECISION_CONFIG["sales"]["promo_settings"]["slowmover_combinations"]["data"]
+        sales.PROMO_DEMAND_UPLIFT = dict(
+            DECISION_CONFIG["sales"]["promo_settings"]["demand_uplift"]["data"]
+        )
+        sales.ROUND3_PROMO_PRESSURE = \
+            DECISION_CONFIG["sales"]["promo_settings"]["round3_promo_pressure"]["value"]
+        sales.WEEKLY_DEMAND_PIECES = dict(
+            DECISION_CONFIG["sales"]["weekly_demand_pieces"]["data"]
+        )
+        result["ok"].append("sales")
+    except Exception as e:
+        result["errors"].append(f"sales: {e}")
 
-    # 同步 sales.py
-    import sales
-    for cid in CUSTOMER_IDS:
-        src = DECISION_CONFIG["sales"]["customer_decisions"][cid]
-        sales.CUSTOMER_DECISIONS[cid] = {
-            k: src[k]["value"] for k in src
+    # ── 同步 operations.py ──
+    try:
+        import operations
+        ops = DECISION_CONFIG["operations"]
+        # inbound
+        for name in ops["inbound"]["raw_materials_inspection"]:
+            operations.OPERATIONS_CONFIG["inbound"]["raw_materials_inspection"][name] = \
+                ops["inbound"]["raw_materials_inspection"][name]["value"]
+        for k in ops["inbound"]["raw_materials_warehouse"]:
+            operations.OPERATIONS_CONFIG["inbound"]["raw_materials_warehouse"][k] = \
+                ops["inbound"]["raw_materials_warehouse"][k]["value"]
+        # mixing
+        operations.OPERATIONS_CONFIG["mixing"]["current_mixer"] = \
+            ops["mixing"]["current_mixer"]["value"]
+        operations.OPERATIONS_CONFIG["mixing"]["product_to_mixer"] = {
+            pid: ops["mixing"]["product_to_mixer"][pid]["value"]
+            for pid in PRODUCT_IDS
         }
-    sales.SHORTAGE_RULE = DECISION_CONFIG["sales"]["shortage_settings"]["rule"]["value"]
-    sales.CUSTOMER_PRIORITY = dict(
-        DECISION_CONFIG["sales"]["shortage_settings"]["customer_priority"]["data"]
-    )
-    sales.DAILY_DEMAND_WEIGHTS = list(
-        DECISION_CONFIG["sales"]["daily_demand_settings"]["weights"]["value"]
-    )
-    sales.DAILY_DEMAND_NOISE_STD = \
-        DECISION_CONFIG["sales"]["daily_demand_settings"]["noise_std"]["value"]
-    sales.VMI_COST_ANNUAL = \
-        DECISION_CONFIG["sales"]["promo_settings"]["vmi_cost_annual"]["value"]
-    sales.VALUE_FOR_MONEY_CUSTOMERS = \
-        DECISION_CONFIG["sales"]["promo_settings"]["value_for_money_customers"]["data"]
-    sales.SLOWMOVER_COMBINATIONS = \
-        DECISION_CONFIG["sales"]["promo_settings"]["slowmover_combinations"]["data"]
+        operations.OPERATIONS_CONFIG["mixing"]["production_sequence"] = list(
+            ops["mixing"]["production_sequence"]["value"]
+        )
+        # bottling
+        for k in ops["bottling"]["general_settings"]:
+            operations.OPERATIONS_CONFIG["bottling"]["general_settings"][k] = \
+                ops["bottling"]["general_settings"][k]["value"]
+        operations.OPERATIONS_CONFIG["bottling"]["current_line"] = \
+            ops["bottling"]["current_line"]["value"]
+        operations.OPERATIONS_CONFIG["bottling"]["shifts_per_week"] = \
+            ops["bottling"]["shifts_per_week"]["value"]
+        operations.OPERATIONS_CONFIG["bottling"]["smed_action"] = \
+            ops["bottling"]["smed_action"]["value"]
+        operations.OPERATIONS_CONFIG["bottling"]["increase_speed"] = \
+            ops["bottling"]["increase_speed"]["value"]
+        operations.OPERATIONS_CONFIG["bottling"]["max_overtime_hours"] = \
+            ops["bottling"]["max_overtime_hours"]["value"]
+        operations.OPERATIONS_CONFIG["bottling"]["product_to_line"] = {
+            pid: ops["bottling"]["product_to_line"][pid]["value"]
+            for pid in PRODUCT_IDS
+        }
+        # outbound
+        for k in ops["outbound"]["finished_goods_warehouse"]:
+            operations.OPERATIONS_CONFIG["outbound"]["finished_goods_warehouse"][k] = \
+                ops["outbound"]["finished_goods_warehouse"][k]["value"]
+        result["ok"].append("operations")
+    except Exception as e:
+        result["errors"].append(f"operations: {e}")
 
-    # 同步 operations.py — OPERATIONS_CONFIG
-    import operations
-    ops = DECISION_CONFIG["operations"]
-    # inbound
-    for name in ops["inbound"]["raw_materials_inspection"]:
-        operations.OPERATIONS_CONFIG["inbound"]["raw_materials_inspection"][name] = \
-            ops["inbound"]["raw_materials_inspection"][name]["value"]
-    for k in ops["inbound"]["raw_materials_warehouse"]:
-        operations.OPERATIONS_CONFIG["inbound"]["raw_materials_warehouse"][k] = \
-            ops["inbound"]["raw_materials_warehouse"][k]["value"]
-    # mixing
-    operations.OPERATIONS_CONFIG["mixing"]["current_mixer"] = \
-        ops["mixing"]["current_mixer"]["value"]
-    operations.OPERATIONS_CONFIG["mixing"]["product_to_mixer"] = dict(
-        ops["mixing"]["product_to_mixer"]["data"]
-    )
-    operations.OPERATIONS_CONFIG["mixing"]["production_sequence"] = list(
-        ops["mixing"]["production_sequence"]["value"]
-    )
-    # bottling
-    for k in ops["bottling"]["general_settings"]:
-        operations.OPERATIONS_CONFIG["bottling"]["general_settings"][k] = \
-            ops["bottling"]["general_settings"][k]["value"]
-    operations.OPERATIONS_CONFIG["bottling"]["current_line"] = \
-        ops["bottling"]["current_line"]["value"]
-    operations.OPERATIONS_CONFIG["bottling"]["shifts_per_week"] = \
-        ops["bottling"]["shifts_per_week"]["value"]
-    operations.OPERATIONS_CONFIG["bottling"]["smed_action"] = \
-        ops["bottling"]["smed_action"]["value"]
-    operations.OPERATIONS_CONFIG["bottling"]["increase_speed"] = \
-        ops["bottling"]["increase_speed"]["value"]
-    operations.OPERATIONS_CONFIG["bottling"]["max_overtime_hours"] = \
-        ops["bottling"]["max_overtime_hours"]["value"]
-    operations.OPERATIONS_CONFIG["bottling"]["product_to_line"] = dict(
-        ops["bottling"]["product_to_line"]["data"]
-    )
-    # outbound
-    for k in ops["outbound"]["finished_goods_warehouse"]:
-        operations.OPERATIONS_CONFIG["outbound"]["finished_goods_warehouse"][k] = \
-            ops["outbound"]["finished_goods_warehouse"][k]["value"]
+    # ── 同步 supplychain.py ──
+    try:
+        import supplychain
+        sc = DECISION_CONFIG["supply_chain"]
+        for cid in COMPONENT_IDS:
+            supplychain.SUPPLY_CHAIN_CONFIG["safety_stock_weeks"][cid] = \
+                sc["safety_stock_weeks"][cid]["value"]
+            supplychain.SUPPLY_CHAIN_CONFIG["lot_size_weeks"][cid] = \
+                sc["lot_size_weeks"][cid]["value"]
+        supplychain.SUPPLY_CHAIN_CONFIG["frozen_period_weeks"] = \
+            sc["frozen_period_weeks"]["value"]
+        supplychain.SUPPLY_CHAIN_CONFIG["production_interval_weeks"] = \
+            sc["production_interval_weeks"]["value"]
+        for pid in PRODUCT_IDS:
+            supplychain.SUPPLY_CHAIN_CONFIG["fg_safety_stock_weeks"][pid] = \
+                sc["fg_safety_stock_weeks"][pid]["value"]
+            supplychain.SUPPLY_CHAIN_CONFIG["fg_production_intervals_days"][pid] = \
+                sc["fg_production_intervals_days"][pid]["value"]
+        result["ok"].append("supplychain")
+    except Exception as e:
+        result["errors"].append(f"supplychain: {e}")
 
-    # 同步 supplychain.py
-    import supplychain
-    sc = DECISION_CONFIG["supply_chain"]
-    for cid in COMPONENT_IDS:
-        supplychain.SUPPLY_CHAIN_CONFIG["safety_stock_weeks"][cid] = \
-            sc["safety_stock_weeks"][cid]["value"]
-        supplychain.SUPPLY_CHAIN_CONFIG["lot_size_weeks"][cid] = \
-            sc["lot_size_weeks"][cid]["value"]
-    supplychain.SUPPLY_CHAIN_CONFIG["frozen_period_weeks"] = \
-        sc["frozen_period_weeks"]["value"]
-    supplychain.SUPPLY_CHAIN_CONFIG["production_interval_weeks"] = \
-        sc["production_interval_weeks"]["value"]
-    for pid in PRODUCT_IDS:
-        supplychain.SUPPLY_CHAIN_CONFIG["fg_safety_stock_weeks"][pid] = \
-            sc["fg_safety_stock_weeks"][pid]["value"]
-        supplychain.SUPPLY_CHAIN_CONFIG["fg_production_intervals_days"][pid] = \
-            sc["fg_production_intervals_days"][pid]["value"]
+    # ── 同步 config.py ──
+    try:
+        import config
+        g = DECISION_CONFIG["global"]
+        config.RANDOM_SEED = g["random_seed"]["value"]
+        config.WEEKS_PER_ROUND = g["weeks_per_round"]["value"]
+        config.USE_NOISE = g["use_noise"]["value"]
+        config.DEMAND_NOISE_STD = g["noise_params"]["demand_noise_std"]["value"]
+        config.PRODUCTION_NOISE_STD = g["noise_params"]["production_noise_std"]["value"]
+        config.COST_NOISE_STD = g["noise_params"]["cost_noise_std"]["value"]
+        result["ok"].append("config")
+    except Exception as e:
+        result["errors"].append(f"config: {e}")
 
-    # 同步 config.py 全局参数
-    import config
-    g = DECISION_CONFIG["global"]
-    config.RANDOM_SEED = g["random_seed"]["value"]
-    config.USE_NOISE = g["use_noise"]["value"]
-    config.DEMAND_NOISE_STD = g["noise_params"]["demand_noise_std"]["value"]
-    config.PRODUCTION_NOISE_STD = g["noise_params"]["production_noise_std"]["value"]
-    config.COST_NOISE_STD = g["noise_params"]["cost_noise_std"]["value"]
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 别名函数（与文档中使用的名称保持一致，定义在 sync_to_modules 之后）
+# ═══════════════════════════════════════════════════════════════════════════════
+
+get_decision = get_value
+set_decision = set_value
+apply_decisions = sync_to_modules
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
