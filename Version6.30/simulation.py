@@ -271,19 +271,23 @@ def run(seed: int = RANDOM_SEED) -> SimulationResult:
                     inv_state.add_fg(pid, actual_pid_liters, week,
                                      total_cost, p.shelf_life_weeks)
 
-        # ── 6) 日级销售仿真（含成品库存约束）──
-        # 构建当前成品库存快照
+        # ── 6) 日级销售仿真（含成品库存约束 + 保质期检查）──
+        # 构建成品批次快照（含 production_week，用于保质期约束）
+        fg_batches = {}
         fg_inventory = {}
         for pid in product_weekly_demand:
-            fg_inventory[pid] = inv_state.get_fg_stock(pid, week)
+            fg_batches[pid] = inv_state.get_fg_batches(pid, week)
+            fg_inventory[pid] = sum(b.quantity_liters for b in fg_batches[pid])
 
-        weekly_sales = daily_sales_sim.simulate_week(week, fg_inventory=fg_inventory)
-
-        # 消耗已发货的成品
-        for day_result in weekly_sales.daily_results:
-            for pid, fulfilled in day_result.fulfilled_by_product.items():
-                if fulfilled > 0:
-                    inv_state.consume_fg(pid, fulfilled, week)
+        weekly_sales = daily_sales_sim.simulate_week(week,
+                                                      fg_inventory=fg_inventory,
+                                                      fg_batches=fg_batches)
+        # 批次已在 sales 模拟器中按保质期约束消耗, 清理零量批次
+        for pid in product_weekly_demand:
+            batches = inv_state.finished_goods_batches.get(pid, [])
+            if batches:
+                inv_state.finished_goods_batches[pid] = [
+                    b for b in batches if b.quantity_liters > 0.001]
 
         # 累计销售数据
         total_revenue += weekly_sales.total_revenue

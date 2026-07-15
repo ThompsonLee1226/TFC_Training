@@ -574,22 +574,31 @@ class DailySalesSimulator:
 
     def simulate_day(self, day: int,
                      daily_demand: Dict[Tuple[str, str], float],
-                     fg_inventory: Optional[Dict[str, float]] = None
+                     fg_inventory: Optional[Dict[str, float]] = None,
+                     fg_batches: Optional[Dict[str, list]] = None,
+                     current_week: int = 1,
                      ) -> DailySalesResult:
         """模拟单日销售。
 
         当天需求先按产品汇总，再与成品库存比对。
         库存不足时等比缩减所有客户订单（公平分配）。
 
+        如果传入 fg_batches（含 production_week 的批次列表），则:
+          - 根据客户 shelf_life_pct 过滤过期批次
+          - 公式: max_age = product.shelf_life_weeks × (1 - shelf_life_pct/100)
+          - 只从满足保质期要求的批次中发货
+          - 直接修改 batch.quantity_liters（调用方无需再 consume_fg）
+
         Args:
             day: 1-5 (Mon-Fri)
             daily_demand: {(product_id, customer_id): pieces} 当天订单量
             fg_inventory: 可选，{product_id: available_liters} 成品可用库存。
-                          传入后按产品检查库存约束，不足则等比缩减。
-                          不传则假定库存无限（向后兼容，全部满足）。
+            fg_batches: 可选，{product_id: [batch, ...]} 成品批次列表。
+                        每个 batch 需有 .quantity_liters (可写) 和 .production_week (int)。
+            current_week: 当前周次 (用于计算 batch 库龄)
 
         Returns:
-            DailySalesResult 包含当日发货量、收入、服务水平和明细
+            DailySalesResult
         """
         result = DailySalesResult(day=day)
         ci_deltas = get_customer_ci_deltas()
@@ -662,6 +671,12 @@ class DailySalesSimulator:
             if not p:
                 continue
 
+            # ── 计算该客户对该产品的保质期约束 ──
+            customer_slf_pct = CUSTOMER_DECISIONS.get(cid, {}).get("shelf_life_pct", 100.0)
+            # 客户要求剩余保质期 ≥ shelf_life_pct%，即 max_age = total_shelf_life × (1 - pct/100)
+            max_age_weeks = p.shelf_life_weeks * (1.0 - customer_slf_pct / 100.0) \
+                if p.shelf_life_weeks > 0 else float('inf')
+
             # 计算该订单的实际发货量
             if rule == "proportional":
                 fulfilled = liters * scale_factor
@@ -672,6 +687,31 @@ class DailySalesSimulator:
                     fulfilled = min(liters, max(0.0, available))
                 else:
                     fulfilled = liters
+
+            if fulfilled < 0.001:
+                continue
+
+            # ── 保质期检查: 如果提供了批次数据, 只从足够新鲜的批次中发货 ──
+            if fg_batches is not None and pid in fg_batches and max_age_weeks != float('inf'):
+                batches = sorted(fg_batches[pid],
+                                 key=lambda b: b.production_week)  # FIFO: 最老的先出
+                remaining_need = fulfilled
+                fulfilled_fresh = 0.0
+                for b in batches:
+                    if remaining_need <= 0:
+                        break
+                    if b.quantity_liters <= 0:
+                        continue
+                    age = current_week - b.production_week
+                    if age > max_age_weeks:
+                        continue  # 该批次太旧, 不能满足此客户的保质期要求
+                    take = min(remaining_need, b.quantity_liters)
+                    b.quantity_liters -= take
+                    remaining_need -= take
+                    fulfilled_fresh += take
+
+                # 保质期约束下的实际发货量（可能小于 fulfilled）
+                fulfilled = fulfilled_fresh
 
             if fulfilled < 0.001:
                 continue
@@ -690,7 +730,7 @@ class DailySalesSimulator:
             result.revenue_by_product[pid] = (
                 result.revenue_by_product.get(pid, 0.0) + rev)
 
-            # 消耗成品库存
+            # 消耗成品库存（总量层面）
             if remaining_fg is not None and pid in remaining_fg and remaining_fg[pid] != float('inf'):
                 remaining_fg[pid] = max(0.0, remaining_fg[pid] - fulfilled)
             if fg_inventory is not None and pid in fg_inventory:
@@ -706,14 +746,16 @@ class DailySalesSimulator:
     # ── 周级接口（兼容旧调用方）─────────────────────────────
 
     def simulate_week(self, week: int,
-                      fg_inventory: Optional[Dict[str, float]] = None
+                      fg_inventory: Optional[Dict[str, float]] = None,
+                      fg_batches: Optional[Dict[str, list]] = None,
                       ) -> WeeklySalesResult:
         """模拟一周销售（日级离散）。
 
         Args:
             week: 周次
             fg_inventory: 可选，{product_id: available_liters} 成品初始库存。
-                          传入后会逐天消耗；不传则假定库存无限。
+            fg_batches: 可选，{product_id: [batch, ...]} 成品批次列表（含 production_week）。
+                        传入后按客户 shelf_life_pct 过滤批次。
 
         流程:
           1. 按权重拆分周需求 → 5 天日需求
@@ -728,6 +770,8 @@ class DailySalesSimulator:
                 day=day_idx + 1,
                 daily_demand=day_demand,
                 fg_inventory=fg_inventory,  # 逐天消耗同一份库存
+                fg_batches=fg_batches,      # 逐天消耗同一份批次数据
+                current_week=week,
             )
             result.daily_results.append(day_result)
             result.total_demand_liters += day_result.demand_liters

@@ -120,6 +120,45 @@ class InventoryState:
         return sum(b.quantity_liters for b in self._valid(
             self.finished_goods_batches.get(prod_id, []), week))
 
+    def get_fg_batches(self, prod_id: str, week: int) -> List[StockBatch]:
+        """返回该成品所有未过期批次（含 production_week），按 FIFO 排序。
+        用于销售仿真时检查保质期是否满足客户要求。
+        """
+        return self._valid(
+            self.finished_goods_batches.get(prod_id, []), week)
+
+    def consume_fg_shelf_aware(self, prod_id: str, qty: float, week: int,
+                                max_age_weeks: float) -> float:
+        """FIFO 消耗成品，但只消耗 production_week 在允许范围内的批次。
+
+        Args:
+            prod_id: 成品 ID
+            qty: 需求量 (升)
+            week: 当前周次
+            max_age_weeks: 最大允许库龄 (周)。
+                           批次 age = week - production_week，须 ≤ max_age_weeks。
+                           例如 max_age_weeks=5 表示只消耗 5 周内生产的成品。
+
+        Returns:
+            实际消耗量 (升)。可能小于 qty（如果新鲜库存不足）。
+        """
+        batches = self.finished_goods_batches.get(prod_id, [])
+        valid_batches = self._valid(batches, week)
+        consumed = 0.0
+        remaining = qty
+        for b in valid_batches:
+            if remaining <= 0:
+                break
+            age = week - b.production_week
+            if age > max_age_weeks:
+                continue  # 太旧，跳过
+            take = min(remaining, b.quantity_liters)
+            b.quantity_liters -= take
+            remaining -= take
+            consumed += take
+        self._cleanup_fg(prod_id, batches)
+        return consumed
+
     def consume_component(self, comp_id: str, qty: float, week: int) -> float:
         """FIFO 消耗组件，返回实际消耗量"""
         batches = self.component_batches.get(comp_id, [])
