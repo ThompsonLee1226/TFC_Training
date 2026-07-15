@@ -15,7 +15,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 
-from simulation import run, calibration_reports
+from simulation import run_multi, calibration_reports
 
 
 def fm(v):
@@ -35,7 +35,7 @@ def main():
     print()
 
     print("运行仿真...")
-    result = run()
+    result = run_multi()
 
     pl = result.pl
     inv = result.inv

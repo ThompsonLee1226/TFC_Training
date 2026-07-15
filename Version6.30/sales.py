@@ -58,8 +58,7 @@ CUSTOMER_DECISIONS: Dict[str, dict] = {
 
 
 # ═══════════════════════════════════════════════════════════════
-# 周需求数据（pieces / 周）
-# 来源：Sales → History → Round 3 → Customer Product report
+# 周需求数据
 # ═══════════════════════════════════════════════════════════════
 
 # 格式：{(product_id, customer_id): pieces_per_week}
@@ -131,7 +130,7 @@ PROMO_DEMAND_UPLIFT = {
     "Heavy":     0.0475,
 }
 
-# WEEKLY_DEMAND_PIECES 数据采集时的促销状态（Round 3: 所有客户均为 Middle）
+# WEEKLY_DEMAND_PIECES 数据采集时的促销状态（所有客户均为 Middle）
 ROUND3_PROMO_PRESSURE = "Middle"
 
 # "Value for Money" 客户 ID 集合（促销需求翻倍）
@@ -456,7 +455,7 @@ DAILY_DEMAND_WEIGHTS = [0.20, 0.20, 0.20, 0.20, 0.20]
 # 日需求随机波动标准差（相对值），仅 USE_NOISE=True 时生效
 DAILY_DEMAND_NOISE_STD = 0.05
 
-# 短缺规则 (per sales_info.txt:140-149)
+# 短缺规则
 #   "proportional"    — 等比分配短缺 (默认)
 #   "fcfs"           — 先到先得 (按订单时间)
 #   "priority"       — 客户优先级 (需配置 CUSTOMER_PRIORITY)
@@ -475,7 +474,7 @@ CUSTOMER_PRIORITY: Dict[str, int] = {
 # 日级销售仿真 — 数据结构和模拟器
 # ═══════════════════════════════════════════════════════════════
 #
-# 设计原则（对齐 operations.py 日级仿真）：
+# 原则：
 #   - 每周拆为 5 个工作日 (Mon-Fri)，逐天模拟
 #   - 日需求 = 周需求 × 日权重 + 可选的随机波动
 #   - 逐天库存检查：成品库存不足时等比缩减发货量

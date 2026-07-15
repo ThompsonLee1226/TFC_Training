@@ -44,7 +44,7 @@ class SimulationResult:
     kpi_values: Dict[str, float] = field(default_factory=dict)
 
 
-def run() -> SimulationResult:
+def run(seed: int = RANDOM_SEED) -> SimulationResult:
     """
     执行一次仿真。
 
@@ -59,6 +59,8 @@ def run() -> SimulationResult:
     """
     sc_cfg = supplychain.SUPPLY_CHAIN_CONFIG
 
+    out_put = True
+
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 初始化
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -69,12 +71,12 @@ def run() -> SimulationResult:
     }
 
     # 生产模拟器
-    prod_sim = operations.ProductionSimulator(seed=RANDOM_SEED)
+    prod_sim = operations.ProductionSimulator(seed=seed)
     total_production_cost = 0.0
     total_waste_material_cost = 0.0  # 启动废品材料成本（应归入 Stock Risk）
 
     # 日级销售模拟器
-    daily_sales_sim = sales.DailySalesSimulator(seed=RANDOM_SEED)
+    daily_sales_sim = sales.DailySalesSimulator(seed=seed)
 
     # 组件需求总量（BOM反推）
     component_needs = operations.calculate_component_needs(total_demand_by_product)
@@ -133,8 +135,6 @@ def run() -> SimulationResult:
 
     def place_order(comp_id: str, qty: float, current_week: int, lead_time_days: int):
         """下单，记录到达周和下单周（用于保质期起算）。
-
-        per entity_info.txt:79-80 — 组件保质期从供应商下单日起算。
         """
         lt_weeks = max(1, round(lead_time_days / 7))
         arrive = current_week + lt_weeks
@@ -313,7 +313,7 @@ def run() -> SimulationResult:
             lt_days = purchasing.get_supplier_lead_time(sid) if sid else 7
             lt_weeks = max(1, round(lt_days / 7))
             target = need * (ss_weeks + lt_weeks)
-            if current < target * 0.7:
+            if current < target:
                 # 补货量 = max(lot_size 批量, 缺口)，确保满足最小订货批量
                 order_qty = max(lot_weeks * need, target - current)
                 place_order(comp_id, order_qty, week, lt_days)
@@ -590,6 +590,8 @@ def run() -> SimulationResult:
 
     roi = pl.operating_profit / inv.total * 100 if inv.total > 0 else 0
 
+    print(f"Simulation Result: ROI = {roi:.2f}%")
+
     return SimulationResult(
         pl=pl, inv=inv, roi=roi,
         kpi_values={
@@ -627,13 +629,10 @@ def run_multi(iterations: int = 40) -> SimulationResult:
     all_results = []
     for i in range(iterations):
         seed = RANDOM_SEED + i if USE_NOISE else RANDOM_SEED
-        # 临时覆盖 seed 以产生变化
-        orig_seed = RANDOM_SEED
-        try:
-            # 使用相同 seed 确定性运行；如需随机变化则开启 USE_NOISE
-            r = run()
-        finally:
-            pass
+
+        # 如需随机变化则开启 USE_NOISE
+        r = run(seed)
+        print(f"Start Monte Carlo Simulation Round:{i}")
         all_results.append(r)
 
     # 平均
