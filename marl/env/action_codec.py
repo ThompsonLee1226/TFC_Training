@@ -21,13 +21,8 @@ MARL 动作编解码器 — MultiDiscrete 动作 ↔ TFC 决策配置
   assert np.array_equal(actions, restored)
 """
 
-import sys
-import os
 from typing import Dict, List, Tuple, Any, Optional
 import numpy as np
-
-# 确保能 import 上层模块
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 try:
     import gymnasium as gym
@@ -535,7 +530,7 @@ class ActionCodec:
 
         内部调用 decision.set_value() 逐变量更新。
         """
-        from decision import set_value as _set_decision
+        from Simulation.decision import set_value as _set_decision
 
         updates = self.decode(actions)
         for path, value in updates.items():
@@ -552,7 +547,7 @@ class ActionCodec:
         Returns:
             shape=(n_dims,) 的整数数组
         """
-        from decision import get_value as _get_decision
+        from Simulation.decision import get_value as _get_decision
 
         actions = np.zeros(self._n_dims, dtype=np.int64)
         for i, spec in enumerate(self.var_specs):

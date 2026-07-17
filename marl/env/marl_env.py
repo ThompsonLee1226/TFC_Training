@@ -25,13 +25,10 @@ TFC MARL Gymnasium 环境 — 轮级 step
   obs_dict, rewards, terminated, truncated, info = env.step(actions)
 """
 
-import sys
 import os
 from typing import Dict, Tuple, Optional, Any, Union
 
 import numpy as np
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 try:
     import gymnasium as gym
@@ -42,11 +39,7 @@ except ImportError:
         "Install with: pip install gymnasium"
     )
 
-# 项目内部模块
-from decision import sync_to_modules, validate_decisions
-from simulation import run
-from config import RANDOM_SEED, WEEKS_PER_ROUND
-
+# 先导入 marl 包以触发 marl/__init__.py 中的路径配置
 from marl.env.action_codec import (
     ActionCodec, create_all_codecs,
     build_single_action_space, build_multi_action_spaces,
@@ -58,6 +51,11 @@ from marl.env.observation_builder import (
     extract_config_state,
     extract_result_state,
 )
+
+# 引擎模块（需在 marl 路径配置之后导入）
+from Simulation.decision import sync_to_modules, validate_decisions
+from Simulation.simulation import run
+from Simulation.config import RANDOM_SEED, WEEKS_PER_ROUND
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -269,7 +267,7 @@ class TFCEnv(gym.Env):
         通过重新加载 decision 模块来重置 DECISION_CONFIG，
         然后同步到各原始模块。
         """
-        import decision as _dec
+        from Simulation import decision as _dec
         import importlib
         # 重新加载 decision 模块以获取默认配置
         importlib.reload(_dec)

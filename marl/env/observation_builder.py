@@ -21,20 +21,19 @@ MARL 观测构建器 — 仿真状态 → 观测向量
   obs_local = builder.build_local_obs("purchasing", config_state, result)
 """
 
-import sys
-import os
 from typing import Dict, Optional
 import numpy as np
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 try:
     import gymnasium as gym
 except ImportError:
     gym = None
 
+# 先导入 marl 包以触发 marl/__init__.py 中的路径配置
+import marl  # noqa: F401 — 触发 Simulation/ 路径注入
+
 # 复用 state_space 的配置
-from state_space import (
+from Simulation.state_space import (
     StateSpaceConfig,
     NORMALIZATION_CONFIG,
     normalize_value,
@@ -261,9 +260,9 @@ def extract_config_state() -> Dict[str, np.ndarray]:
         }
     """
     # 延迟导入以避免循环依赖
-    from decision import get_value as _get
-    import purchasing as _purch
-    import sales as _sales
+    from Simulation.decision import get_value as _get
+    from Simulation import purchasing as _purch
+    from Simulation import sales as _sales
 
     # ── 供应商特征 (5 suppliers × 5 features = 25) ──
     # features: effective_price, lead_time_days, contract_index, quality_level, delivery_reliability
@@ -414,7 +413,7 @@ def extract_result_state(result, current_round: int = 1) -> Dict[str, np.ndarray
             "product_demand":        np.ndarray(6,),
         }
     """
-    from config import WEEKS_PER_ROUND
+    from Simulation.config import WEEKS_PER_ROUND
 
     pl = result.pl
     inv = result.inv
@@ -512,7 +511,7 @@ def extract_result_state(result, current_round: int = 1) -> Dict[str, np.ndarray
 # 辅助：从 state_space 导入 NormalizationSpec（避免重复定义）
 # ═══════════════════════════════════════════════════════════════════════════════
 
-from state_space import NormalizationSpec
+from Simulation.state_space import NormalizationSpec
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

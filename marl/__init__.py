@@ -11,3 +11,10 @@ TFC MARL — 多智能体强化学习环境包装
   - marl.training:                训练脚本 (SB3 PPO / RLlib MAPPO)
   - marl.evaluation:              评估脚本
 """
+import sys
+import os
+
+# 确保引擎模块可被导入（Simulation/ 包和内部 flat import 兼容）
+_SIMULATION_DIR = os.path.join(os.path.dirname(__file__), '..', 'Simulation')
+if _SIMULATION_DIR not in sys.path:
+    sys.path.insert(0, _SIMULATION_DIR)
