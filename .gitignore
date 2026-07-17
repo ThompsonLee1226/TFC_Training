@@ -12,8 +12,10 @@ build/
 # Virtual environments
 venv/
 .venv/
-env/
+/env/
 .env/
+# MARL environment wrapper — not a virtualenv
+!marl/env/
 
 # IDE
 .vscode/
