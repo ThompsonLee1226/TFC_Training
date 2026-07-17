@@ -44,6 +44,10 @@ htmlcov/
 # Logs
 *.log
 
+# MARL outputs
+marl/models/
+marl/logs/
+
 # test file
 Version6.30\test.py
 
