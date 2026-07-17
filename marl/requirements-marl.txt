@@ -1,5 +1,5 @@
-# TFC MARL 环境依赖
-# 安装: pip install -r marl/requirements-marl.txt
+# TFC MARL dependencies
+# Install: pip install -r marl/requirements-marl.txt
 
 gymnasium>=0.29
 stable-baselines3>=2.0
