@@ -606,8 +606,8 @@ Examples:
                         help="Model save directory (default: training_result/multi_<time>/models)")
     parser.add_argument("--log-dir", type=str, default="",
                         help="TensorBoard log directory (default: training_result/multi_<time>/logs)")
-    parser.add_argument("--device", type=str, default="cuda",
-                        help="Device: cuda / cpu / auto (default: cuda)")
+    parser.add_argument("--device", type=str, default="cpu",
+                        help="Device: cuda / cpu / auto (default: cpu)")
     parser.add_argument("--quiet", action="store_true",
                         help="Suppress detailed output")
 
@@ -633,6 +633,8 @@ Examples:
         info = _AGENT_INFO[aid]
         print(f"  {aid:<15} — {info['description']} "
               f"({info['action_dims']} act, {info['obs_dims']} obs)")
+    if args.device == "cuda" and torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name()}")
     print()
 
     trainer = MultiAgentPPOTrainer(
