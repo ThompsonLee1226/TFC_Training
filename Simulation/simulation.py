@@ -594,7 +594,7 @@ def run(seed: int = RANDOM_SEED) -> SimulationResult:
 
     roi = pl.operating_profit / inv.total * 100 if inv.total > 0 else 0
 
-    print(f"Simulation Result: ROI = {roi:.2f}%")
+    """print(f"Simulation Result: ROI = {roi:.2f}%")"""
 
     return SimulationResult(
         pl=pl, inv=inv, roi=roi,
@@ -636,7 +636,7 @@ def run_multi(iterations: int = 40) -> SimulationResult:
 
         # 如需随机变化则开启 USE_NOISE
         r = run(seed)
-        print(f"Start Monte Carlo Simulation Round:{i}")
+        """print(f"Start Monte Carlo Simulation Round:{i}")"""
         all_results.append(r)
 
     # 平均

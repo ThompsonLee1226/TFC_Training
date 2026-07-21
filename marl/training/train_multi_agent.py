@@ -42,6 +42,7 @@ from collections import defaultdict
 
 import numpy as np
 import torch
+from tqdm import tqdm
 
 # ── 路径配置 ──
 _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -83,7 +84,7 @@ class MultiAgentPPOTrainer:
         seed: int = 42,
         model_dir: str = "",
         log_dir: str = "",
-        device: str = "auto",
+        device: str = "cuda",
     ):
         """
         Args:
@@ -220,6 +221,8 @@ class MultiAgentPPOTrainer:
         roi_history = []
         best_roi = -float("inf")
 
+        pbar = tqdm(total=total_timesteps, desc="Training", unit="steps",
+                     disable=not verbose)
         while timesteps_done < total_timesteps:
             # Collect joint experiences for one episode
             ep_roi, ep_steps = self._collect_and_train()
@@ -228,21 +231,20 @@ class MultiAgentPPOTrainer:
             episode_count += 1
             roi_history.append(ep_roi)
 
-            # Progress report
-            if episode_count % 10 == 0:
-                recent_roi = np.mean(roi_history[-10:])
-                elapsed = time.time() - start_time
-                if verbose:
-                    print(f"  Ep {episode_count:>5} | "
-                          f"Steps: {timesteps_done:>8,}/{total_timesteps:,} | "
-                          f"ROI (recent 10): {recent_roi:>6.2f}% | "
-                          f"Best: {best_roi:>6.2f}% | "
-                          f"Time: {elapsed:.0f}s")
-                # ── TensorBoard logging ──
-                if self.writer:
-                    self.writer.add_scalar("train/roi_recent10", recent_roi, timesteps_done)
-                    self.writer.add_scalar("train/best_roi", best_roi, timesteps_done)
-                    self.writer.add_scalar("train/episodes", episode_count, timesteps_done)
+            # ── Update progress bar ──
+            recent_roi = np.mean(roi_history[-10:])
+            pbar.update(ep_steps)
+            pbar.set_postfix({
+                "ROI": f"{recent_roi:+.1f}%",
+                "Best": f"{best_roi:+.1f}%",
+                "Ep": episode_count,
+            })
+
+            # ── TensorBoard logging ──
+            if self.writer and episode_count % 10 == 0:
+                self.writer.add_scalar("train/roi_recent10", recent_roi, timesteps_done)
+                self.writer.add_scalar("train/best_roi", best_roi, timesteps_done)
+                self.writer.add_scalar("train/episodes", episode_count, timesteps_done)
 
             if ep_roi > best_roi:
                 best_roi = ep_roi
@@ -250,6 +252,8 @@ class MultiAgentPPOTrainer:
             # Save checkpoint
             if timesteps_done % save_interval == 0 and timesteps_done > 0:
                 self._save_models(f"checkpoint_{timesteps_done}")
+
+        pbar.close()
 
         train_time = time.time() - start_time
 
@@ -602,6 +606,8 @@ Examples:
                         help="Model save directory (default: training_result/multi_<time>/models)")
     parser.add_argument("--log-dir", type=str, default="",
                         help="TensorBoard log directory (default: training_result/multi_<time>/logs)")
+    parser.add_argument("--device", type=str, default="cuda",
+                        help="Device: cuda / cpu / auto (default: cuda)")
     parser.add_argument("--quiet", action="store_true",
                         help="Suppress detailed output")
 
@@ -640,6 +646,7 @@ Examples:
         seed=args.seed,
         model_dir=model_dir,
         log_dir=log_dir,
+        device=args.device,
     )
 
     # ── Train ──
