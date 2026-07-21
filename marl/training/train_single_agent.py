@@ -41,9 +41,8 @@ from marl.env.marl_env import TFCEnv  # noqa: F401 — 确保 marl 包初始化
 # 默认路径
 # ═══════════════════════════════════════════════════════════════════════════════
 
-_MARL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_MODEL_DIR = os.path.join(_MARL_DIR, "models")
-DEFAULT_LOG_DIR = os.path.join(_MARL_DIR, "logs")
+_TRAINING_DIR = os.path.dirname(os.path.abspath(__file__))
+_TRAINING_RESULT_DIR = os.path.join(_TRAINING_DIR, "training_result")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -57,8 +56,8 @@ def train_agent(
     n_steps: int = 1024,
     ent_coef: float = 0.01,
     seed: int = 42,
-    model_dir: str = DEFAULT_MODEL_DIR,
-    log_dir: str = DEFAULT_LOG_DIR,
+    model_dir: str = "",
+    log_dir: str = "",
     eval_episodes: int = 20,
     verbose: int = 1,
 ) -> dict:
@@ -230,12 +229,12 @@ Examples:
         help="Random seed (default: 42)",
     )
     parser.add_argument(
-        "--model-dir", type=str, default=DEFAULT_MODEL_DIR,
-        help=f"Model save directory (default: {DEFAULT_MODEL_DIR})",
+        "--model-dir", type=str, default="",
+        help="Model save directory (default: training_result/single_<time>/models)",
     )
     parser.add_argument(
-        "--log-dir", type=str, default=DEFAULT_LOG_DIR,
-        help=f"TensorBoard log directory (default: {DEFAULT_LOG_DIR})",
+        "--log-dir", type=str, default="",
+        help="TensorBoard log directory (default: training_result/single_<time>/logs)",
     )
     parser.add_argument(
         "--eval-episodes", type=int, default=20,
@@ -247,6 +246,19 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    # ── 路径：training_result/single_<HHMMSS>/ ──
+    run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = args.model_dir if args.model_dir else os.path.join(
+        _TRAINING_RESULT_DIR, f"single_{run_timestamp}")
+    model_dir = os.path.join(run_dir, "models")
+    log_dir = args.log_dir if args.log_dir else os.path.join(run_dir, "logs")
+    os.makedirs(model_dir, exist_ok=True)
+    os.makedirs(log_dir, exist_ok=True)
+
+    print(f"Run dir:     {run_dir}")
+    print(f"Model dir:   {model_dir}")
+    print(f"Log dir:     {log_dir}")
 
     # 确定要训练的 Agent 列表
     if args.agent == "all":
@@ -268,8 +280,8 @@ Examples:
             n_steps=args.n_steps,
             ent_coef=args.ent_coef,
             seed=args.seed,
-            model_dir=args.model_dir,
-            log_dir=args.log_dir,
+            model_dir=model_dir,
+            log_dir=log_dir,
             eval_episodes=args.eval_episodes,
             verbose=0 if args.quiet else 1,
         )
@@ -288,12 +300,8 @@ Examples:
                   f"  {r['post_trained_roi_mean']:>8.2f}% ±{r['post_trained_roi_std']:.2f}"
                   f"  {r['improvement']:>+10.2f}%")
 
-    # 保存结果 JSON
-    results_path = os.path.join(
-        args.log_dir,
-        f"results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    )
-    os.makedirs(args.log_dir, exist_ok=True)
+    # 保存结果 JSON 到 run_dir
+    results_path = os.path.join(run_dir, "results.json")
     # 转换 numpy 类型以便 JSON 序列化
     serializable = {}
     for aid, r in results.items():
