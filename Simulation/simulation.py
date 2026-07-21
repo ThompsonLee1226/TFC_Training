@@ -615,14 +615,14 @@ def calibration_reports() -> str:
     return purchasing.calibration_report() + "\n\n" + sales.calibration_report()
 
 
-def run_multi(iterations: int = 40) -> SimulationResult:
+def run_multi(iterations: int = 20, seed: int = RANDOM_SEED) -> SimulationResult:
     """多轮迭代仿真，取平均值。
 
     每轮仿真 26 周（半年），运行 N 次迭代后取平均。
-    仿照游戏引擎的 40 次迭代 × 26 周 = 20 年仿真。
+    仿照游戏引擎的 20 次迭代 × 26 周 
 
     Args:
-        iterations: 迭代次数，默认 40
+        iterations: 迭代次数，默认 20
 
     Returns:
         SimulationResult，各字段为 N 次迭代的平均值
@@ -632,7 +632,7 @@ def run_multi(iterations: int = 40) -> SimulationResult:
 
     all_results = []
     for i in range(iterations):
-        seed = RANDOM_SEED + i if USE_NOISE else RANDOM_SEED
+        seed = seed + i if USE_NOISE else seed
 
         # 如需随机变化则开启 USE_NOISE
         r = run(seed)

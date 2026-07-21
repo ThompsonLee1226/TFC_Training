@@ -47,9 +47,10 @@ htmlcov/
 # MARL outputs
 marl/models/
 marl/logs/
+marl/training/training_result
 
 # test file
-Version6.30\test.py
+
 
 # CI 研究工作文件（Playwright采集脚本、分析代码、实验数据、截图）
 ci_research/

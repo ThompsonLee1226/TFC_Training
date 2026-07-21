@@ -54,7 +54,7 @@ from marl.env.observation_builder import (
 
 # 引擎模块（需在 marl 路径配置之后导入）
 from Simulation.decision import sync_to_modules, validate_decisions
-from Simulation.simulation import run
+from Simulation.simulation import run_multi
 from Simulation.config import RANDOM_SEED, WEEKS_PER_ROUND
 
 
@@ -213,7 +213,7 @@ class TFCEnv(gym.Env):
         sync_to_modules()
 
         seed = self._episode_seed + self._current_round if self.use_noise else self._episode_seed
-        result = run(seed=seed)
+        result = run_multi(seed=seed)
 
         # 4. 更新轮次
         self._current_round += 1

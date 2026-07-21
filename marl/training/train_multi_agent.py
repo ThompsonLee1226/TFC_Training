@@ -74,7 +74,7 @@ class MultiAgentPPOTrainer:
     def __init__(
         self,
         n_rounds: int = 1,
-        use_noise: bool = False,
+        use_noise: bool = True,
         learning_rate: float = 3e-4,
         n_steps: int = 1024,
         batch_size: int = 64,
