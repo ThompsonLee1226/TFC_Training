@@ -691,8 +691,8 @@ class MAPPTrainer:
             avg_roi = np.mean(roi_history) if roi_history else 0.0
 
             if pbar is not None:
-                # pbar already advanced by 100-step increments during collection;
-                # ensure it reflects the final count exactly
+                # pbar already advanced +1 per step during collection;
+                # here just refresh the postfix with full diagnostics
                 pbar.set_postfix({
                     "ROI": f"{avg_roi:+.1f}%",
                     "Best": f"{best_roi:+.1f}%",
@@ -820,12 +820,11 @@ class MAPPTrainer:
         episode_roi = 0.0
         done = False
 
-        # Running windows + trigger for dense logging
+        # Running windows + trigger for TensorBoard logging
         from collections import deque as _deque
         reward_window = _deque(maxlen=self.rollout_log_interval)
         value_window = _deque(maxlen=self.rollout_log_interval)
-        next_log_at = self.global_step + self.rollout_log_interval
-        steps_logged = 0  # how many steps have been accounted for in pbar
+        next_tb_log_at = self.global_step + self.rollout_log_interval
 
         while not self.buffer.is_full:
             # Normalize observations
@@ -878,10 +877,19 @@ class MAPPTrainer:
             )
             n_collected += 1
 
-            # ── Dense logging every N env steps (TensorBoard + progress bar) ──
+            # ── Progress bar: update every step ──
             step = self.global_step + n_collected
-            if step >= next_log_at and len(reward_window) > 1:
-                # ── TensorBoard ──
+            if self._pbar is not None:
+                self._pbar.update(1)
+                # Refresh postfix every 10 steps to keep overhead minimal
+                if step % 10 == 0 and len(reward_window) > 1:
+                    self._pbar.set_postfix({
+                        "ROI": f"{episode_roi:+.1f}%",
+                        "rew": f"{np.mean(reward_window):+.2f}",
+                    })
+
+            # ── TensorBoard: log rollout metrics every N env steps ──
+            if step >= next_tb_log_at and len(reward_window) > 1:
                 if self.writer:
                     self.writer.add_scalar("rollout/reward_mean",
                         np.mean(reward_window), step)
@@ -891,18 +899,7 @@ class MAPPTrainer:
                         np.std(reward_window), step)
                     self.writer.add_scalar("rollout/value_reward_gap",
                         np.mean(value_window) - np.mean(reward_window), step)
-
-                # ── Progress bar: advance by the interval ──
-                if self._pbar is not None:
-                    self._pbar.update(self.rollout_log_interval)
-                    steps_logged += self.rollout_log_interval
-                    self._pbar.set_postfix({
-                        "ROI": f"{episode_roi:+.1f}%",
-                        "rew": f"{np.mean(reward_window):+.2f}",
-                        "val": f"{np.mean(value_window):+.2f}",
-                    })
-
-                next_log_at += self.rollout_log_interval
+                next_tb_log_at += self.rollout_log_interval
 
             if done:
                 episode_rois.append(episode_roi)
@@ -910,11 +907,6 @@ class MAPPTrainer:
                 obs_dict, _ = self.env.reset()
             else:
                 obs_dict = next_obs_dict
-
-        # ── Advance pbar for any remaining unlogged steps (tail < interval) ──
-        remainder = n_collected - steps_logged
-        if remainder > 0 and self._pbar is not None:
-            self._pbar.update(remainder)
 
         # Compute GAE advantages
         if not done:
