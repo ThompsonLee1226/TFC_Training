@@ -48,6 +48,7 @@ htmlcov/
 marl/models/
 marl/logs/
 marl/training/training_result
+marl/training/training_results
 
 # test file
 
