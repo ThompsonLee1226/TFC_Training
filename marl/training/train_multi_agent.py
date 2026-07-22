@@ -597,7 +597,8 @@ class MAPPTrainer:
 
         # ── Global step counter (monotonic across all rollouts) ──
         self.global_step = 0
-        self.rollout_log_interval = 100  # log every N env steps during collection
+        self.rollout_log_interval = 64  # log all TB metrics every N env steps
+        self._last_loss_info: Dict[str, float] = {}  # cached from most recent update
 
         # ── TensorBoard ──
         self.writer = None
@@ -686,13 +687,12 @@ class MAPPTrainer:
 
             # Phase 2: PPO update
             loss_info = self._update()
+            self._last_loss_info = loss_info  # cache for dense TB logging
 
             # ── Progress bar: refresh postfix with latest diagnostics ──
             avg_roi = np.mean(roi_history) if roi_history else 0.0
 
             if pbar is not None:
-                # pbar already advanced +1 per step during collection;
-                # here just refresh the postfix with full diagnostics
                 pbar.set_postfix({
                     "ROI": f"{avg_roi:+.1f}%",
                     "Best": f"{best_roi:+.1f}%",
@@ -706,31 +706,10 @@ class MAPPTrainer:
                       f"Best={best_roi:+.1f}% | loss={loss_info.get('total', 0):.3f} | "
                       f"Updates={n_updates}")
 
-            # ── TensorBoard: per-update diagnostics (every n_steps) ──
+            # ── TensorBoard: roi/best_roi at update boundary ──
             if self.writer:
-                step = self.global_step
-                # Core training curves
-                self.writer.add_scalar("train/roi_avg100", avg_roi, step)
-                self.writer.add_scalar("train/best_roi", best_roi, step)
-
-                if loss_info:
-                    # Loss components
-                    self.writer.add_scalar("train/loss_policy", loss_info["policy"], step)
-                    self.writer.add_scalar("train/loss_value", loss_info["value"], step)
-                    self.writer.add_scalar("train/loss_entropy", loss_info["entropy"], step)
-                    self.writer.add_scalar("train/loss_total", loss_info["total"], step)
-
-                    # PPO diagnostics — critical for debugging convergence
-                    self.writer.add_scalar("diag/clip_fraction", loss_info["clip_frac"], step)
-                    self.writer.add_scalar("diag/approx_kl", loss_info["approx_kl"], step)
-                    self.writer.add_scalar("diag/grad_norm", loss_info["grad_norm"], step)
-                    self.writer.add_scalar("diag/explained_variance", loss_info["explained_var"], step)
-
-                    # Per-agent entropy (detect policy collapse per agent)
-                    for aid in _AGENT_ORDER:
-                        key = f"ent_{aid}"
-                        if key in loss_info:
-                            self.writer.add_scalar(f"entropy/{aid}", loss_info[key], step)
+                self.writer.add_scalar("train/roi_avg100", avg_roi, self.global_step)
+                self.writer.add_scalar("train/best_roi", best_roi, self.global_step)
 
             # ── Checkpoint ──
             if total_steps % save_interval == 0 and total_steps > 0:
@@ -888,9 +867,10 @@ class MAPPTrainer:
                         "rew": f"{np.mean(reward_window):+.2f}",
                     })
 
-            # ── TensorBoard: log rollout metrics every N env steps ──
+            # ── TensorBoard: log ALL metrics every N env steps ──
             if step >= next_tb_log_at and len(reward_window) > 1:
                 if self.writer:
+                    # ── Rollout metrics (real-time) ──
                     self.writer.add_scalar("rollout/reward_mean",
                         np.mean(reward_window), step)
                     self.writer.add_scalar("rollout/value_mean",
@@ -899,6 +879,23 @@ class MAPPTrainer:
                         np.std(reward_window), step)
                     self.writer.add_scalar("rollout/value_reward_gap",
                         np.mean(value_window) - np.mean(reward_window), step)
+
+                    # ── Per-update diagnostics (latest available, cached from last update) ──
+                    if self._last_loss_info:
+                        li = self._last_loss_info
+                        self.writer.add_scalar("train/loss_policy", li["policy"], step)
+                        self.writer.add_scalar("train/loss_value", li["value"], step)
+                        self.writer.add_scalar("train/loss_entropy", li["entropy"], step)
+                        self.writer.add_scalar("train/loss_total", li["total"], step)
+                        self.writer.add_scalar("diag/clip_fraction", li["clip_frac"], step)
+                        self.writer.add_scalar("diag/approx_kl", li["approx_kl"], step)
+                        self.writer.add_scalar("diag/grad_norm", li["grad_norm"], step)
+                        self.writer.add_scalar("diag/explained_variance", li["explained_var"], step)
+                        for aid in _AGENT_ORDER:
+                            key = f"ent_{aid}"
+                            if key in li:
+                                self.writer.add_scalar(f"entropy/{aid}", li[key], step)
+
                 next_tb_log_at += self.rollout_log_interval
 
             if done:
