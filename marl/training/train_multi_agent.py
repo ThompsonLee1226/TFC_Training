@@ -18,16 +18,16 @@ Key features:
 
 Quickstart:
   # Standard training (200k steps)
-  py marl/training/train_multi_agent.py
+  python marl/training/train_multi_agent.py
 
   # Quick smoke test (~30s)
-  py marl/training/train_multi_agent.py --timesteps 2000 --eval-episodes 5 --n-rounds 4
+  python marl/training/train_multi_agent.py --timesteps 2000 --eval-episodes 5 --n-rounds 4
 
   # Longer episodes, tuned for convergence
-  py marl/training/train_multi_agent.py --n-rounds 16 --lr 1e-4 --n-steps 2048
+  python marl/training/train_multi_agent.py --n-rounds 16 --lr 1e-4 --n-steps 2048
 
   # Ablation: disable parameter sharing
-  py marl/training/train_multi_agent.py --no-share
+  python marl/training/train_multi_agent.py --no-share
 
   # View training curves
   tensorboard --logdir marl/training/training_results/mappo_*/logs
@@ -595,6 +595,10 @@ class MAPPTrainer:
             global_obs_dim=self.global_obs_dim,
         )
 
+        # ── Global step counter (monotonic across all rollouts) ──
+        self.global_step = 0
+        self.rollout_log_interval = 100  # log every N env steps during collection
+
         # ── TensorBoard ──
         self.writer = None
         if log_dir:
@@ -663,9 +667,15 @@ class MAPPTrainer:
             if verbose:
                 print("(tqdm not installed — using bare progress)")
 
+        # Store pbar so _collect_rollout() can update it at 100-step intervals
+        self._pbar = pbar
+
         while total_steps < total_timesteps:
             # Phase 1: Collect rollout
+            #   - pbar updated every 100 steps inside _collect_rollout()
+            #   - rollout/* TensorBoard metrics written every 100 steps
             ep_rois, n_collected = self._collect_rollout()
+            self.global_step += n_collected
             total_steps += n_collected
             n_updates += 1
 
@@ -677,11 +687,12 @@ class MAPPTrainer:
             # Phase 2: PPO update
             loss_info = self._update()
 
-            # ── Logging ──
+            # ── Progress bar: refresh postfix with latest diagnostics ──
             avg_roi = np.mean(roi_history) if roi_history else 0.0
 
             if pbar is not None:
-                pbar.update(n_collected)
+                # pbar already advanced by 100-step increments during collection;
+                # ensure it reflects the final count exactly
                 pbar.set_postfix({
                     "ROI": f"{avg_roi:+.1f}%",
                     "Best": f"{best_roi:+.1f}%",
@@ -695,9 +706,9 @@ class MAPPTrainer:
                       f"Best={best_roi:+.1f}% | loss={loss_info.get('total', 0):.3f} | "
                       f"Updates={n_updates}")
 
-            # ── TensorBoard (log every update for key metrics) ──
+            # ── TensorBoard: per-update diagnostics (every n_steps) ──
             if self.writer:
-                step = total_steps
+                step = self.global_step
                 # Core training curves
                 self.writer.add_scalar("train/roi_avg100", avg_roi, step)
                 self.writer.add_scalar("train/best_roi", best_roi, step)
@@ -790,12 +801,16 @@ class MAPPTrainer:
     # Rollout collection
     # ═══════════════════════════════════════════════════════════════════
 
-    def _collect_rollout(self) -> Tuple[List[float], int]:
+    def _collect_rollout(self) -> Tuple[List[float], int, List[dict]]:
         """Run joint policy for n_steps, storing experience in self.buffer.
+
+        Also logs dense rollout metrics to TensorBoard every
+        self.rollout_log_interval steps (default 100).
 
         Returns:
             episode_rois: list of ROI for each completed episode
             n_collected:  number of steps collected
+            rollout_logs: list of {step, reward_mean, value_mean, roi} snapshots
         """
         self.buffer._allocate()  # reset
         episode_rois = []
@@ -804,6 +819,13 @@ class MAPPTrainer:
         obs_dict, _ = self.env.reset()
         episode_roi = 0.0
         done = False
+
+        # Running windows + trigger for dense logging
+        from collections import deque as _deque
+        reward_window = _deque(maxlen=self.rollout_log_interval)
+        value_window = _deque(maxlen=self.rollout_log_interval)
+        next_log_at = self.global_step + self.rollout_log_interval
+        steps_logged = 0  # how many steps have been accounted for in pbar
 
         while not self.buffer.is_full:
             # Normalize observations
@@ -833,6 +855,10 @@ class MAPPTrainer:
             raw_reward = rewards[_AGENT_ORDER[0]]
             episode_roi += raw_reward
 
+            # Track for dense logging
+            reward_window.append(raw_reward)
+            value_window.append(value)
+
             # Normalize reward
             if self.normalize_reward:
                 self.reward_normalizer.update(np.array([raw_reward]))
@@ -852,12 +878,43 @@ class MAPPTrainer:
             )
             n_collected += 1
 
+            # ── Dense logging every N env steps (TensorBoard + progress bar) ──
+            step = self.global_step + n_collected
+            if step >= next_log_at and len(reward_window) > 1:
+                # ── TensorBoard ──
+                if self.writer:
+                    self.writer.add_scalar("rollout/reward_mean",
+                        np.mean(reward_window), step)
+                    self.writer.add_scalar("rollout/value_mean",
+                        np.mean(value_window), step)
+                    self.writer.add_scalar("rollout/reward_std",
+                        np.std(reward_window), step)
+                    self.writer.add_scalar("rollout/value_reward_gap",
+                        np.mean(value_window) - np.mean(reward_window), step)
+
+                # ── Progress bar: advance by the interval ──
+                if self._pbar is not None:
+                    self._pbar.update(self.rollout_log_interval)
+                    steps_logged += self.rollout_log_interval
+                    self._pbar.set_postfix({
+                        "ROI": f"{episode_roi:+.1f}%",
+                        "rew": f"{np.mean(reward_window):+.2f}",
+                        "val": f"{np.mean(value_window):+.2f}",
+                    })
+
+                next_log_at += self.rollout_log_interval
+
             if done:
                 episode_rois.append(episode_roi)
                 episode_roi = 0.0
                 obs_dict, _ = self.env.reset()
             else:
                 obs_dict = next_obs_dict
+
+        # ── Advance pbar for any remaining unlogged steps (tail < interval) ──
+        remainder = n_collected - steps_logged
+        if remainder > 0 and self._pbar is not None:
+            self._pbar.update(remainder)
 
         # Compute GAE advantages
         if not done:
