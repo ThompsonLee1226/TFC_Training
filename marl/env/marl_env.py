@@ -91,6 +91,7 @@ class TFCEnv(gym.Env):
         n_rounds: int = 1,
         use_noise: bool = False,
         reward_scale: float = 1.0,
+        use_dense_rewards: bool = False,
     ):
         """
         Args:
@@ -99,6 +100,8 @@ class TFCEnv(gym.Env):
                       设为 1 表示单轮仿真（无跨轮状态传递）。
             use_noise: 是否启用仿真噪声（蒙特卡洛模式）。
             reward_scale: 奖励缩放因子。reward = ROI * reward_scale。
+            use_dense_rewards: 是否使用密集奖励（multi 模式下每个 Agent
+                               获得特定角色的 KPI 奖励，而非仅共享 ROI）。
         """
         if mode not in ("single", "multi"):
             raise ValueError(f"mode must be 'single' or 'multi', got '{mode}'")
@@ -107,6 +110,7 @@ class TFCEnv(gym.Env):
         self.n_rounds = n_rounds
         self.use_noise = use_noise
         self.reward_scale = reward_scale
+        self.use_dense_rewards = use_dense_rewards
 
         # 内部状态
         self._codecs = create_all_codecs()
@@ -114,6 +118,9 @@ class TFCEnv(gym.Env):
         self._current_round = 0
         self._rng = np.random.default_rng(RANDOM_SEED)
         self._episode_seed = RANDOM_SEED
+
+        # 密集奖励的基线 KPI 值（用于相对性能归一化），首次 reset() 时初始化
+        self._baseline_kpis: Optional[Dict[str, float]] = None
 
         # ── 动作空间 ──
         if mode == "single":
@@ -235,8 +242,12 @@ class TFCEnv(gym.Env):
         reward = result.roi * self.reward_scale
 
         if self.mode == "multi":
-            # Multi 模式下各 Agent 共享同一个全局奖励 (CTDE)
-            rewards = {aid: reward for aid in self.AGENT_IDS}
+            if self.use_dense_rewards:
+                # 密集奖励: 共享 ROI (60%) + 特定角色的 KPI 奖励 (40%)
+                rewards = self._compute_dense_rewards(result)
+            else:
+                # Multi 模式下各 Agent 共享同一个全局奖励 (CTDE)
+                rewards = {aid: reward for aid in self.AGENT_IDS}
         else:
             rewards = reward
 
@@ -289,6 +300,98 @@ class TFCEnv(gym.Env):
             "meta": np.zeros(cfg.META_DIM, dtype=np.float32),
             "product_demand": np.zeros(cfg.FG_STOCK_DIM, dtype=np.float32),
         }
+
+    # ═══════════════════════════════════════════════════════════════════
+    # 密集奖励计算
+    # ═══════════════════════════════════════════════════════════════════
+
+    def _compute_dense_rewards(self, result) -> Dict[str, float]:
+        """为每个 Agent 计算密集奖励 = 共享 ROI × 0.6 + 特定角色 KPI 奖励 × 0.4。
+
+        各 Agent 的 KPI 奖励反映其唯一贡献：
+          - purchasing:  最小化采购成本 + 废品率
+          - sales:       最大化收入 + 服务水平
+          - operations:  最小化生产成本 + 搬运成本
+          - supplychain: 优化库存周转率 + 最小化报废
+
+        Args:
+            result: SimulationResult，包含扩展后的 kpi_values
+
+        Returns:
+            {agent_id: reward_float} 字典
+        """
+        kpi = result.kpi_values
+        roi = result.roi * self.reward_scale
+        bl = self._baseline_kpis or kpi  # 没有基线时回退到自身（无相对信号）
+
+        # ── 辅助函数 ──
+        def _ratio(current: float, baseline: float) -> float:
+            """当前/基线比率，映射到 [-1, +1]。1.0 = 相对于基线零成本。"""
+            if abs(baseline) < 1e-8:
+                return 0.0
+            return np.clip(1.0 - (current / baseline), -2.0, 2.0)
+
+        def _growth(current: float, baseline: float) -> float:
+            """相对于基线的增长。"""
+            if abs(baseline) < 1e-8:
+                return 0.0
+            return np.clip((current / baseline) - 1.0, -2.0, 2.0)
+
+        def _penalty(rate: float) -> float:
+            """高比率的惩罚（例如，废品率）。"""
+            return np.clip(-rate * 50.0, -2.0, 2.0)
+
+        def _bonus(rate: float) -> float:
+            """正比率的奖励（例如，服务水平奖金）。"""
+            return np.clip(rate * 50.0, -2.0, 2.0)
+
+        # ── Purchasing: 最小化采购成本 + 废品 ──
+        purch_kpi = (
+            _ratio(kpi["purchase_cost_per_liter"], bl["purchase_cost_per_liter"]) * 0.015 +
+            _penalty(kpi["component_waste_rate"]) * 0.010 +
+            _ratio(kpi["supplier_project_cost"], bl["supplier_project_cost"]) * 0.005
+        )
+
+        # ── Sales: 最大化收入 + 服务水平 ──
+        sales_kpi = (
+            _growth(kpi["revenue"], bl["revenue"]) * 0.015 +
+            _bonus(kpi["bonus_penalty_ratio"]) * 0.010 +
+            _penalty(kpi["ar_interest_cost"] / max(abs(bl.get("ar_interest_cost", 1.0)), 1.0)) * 0.005
+        )
+
+        # ── Operations: 最小化生产成本 + 搬运成本 ──
+        ops_kpi = (
+            _ratio(kpi["production_cost_per_liter"], bl["production_cost_per_liter"]) * 0.015 +
+            _ratio(kpi["handling_cost_total"], bl["handling_cost_total"]) * 0.010 +
+            _growth(kpi["production_efficiency"], bl["production_efficiency"]) * 0.005
+        )
+
+        # ── SupplyChain: 优化库存周转率 + 最小化报废 ──
+        sc_kpi = (
+            _growth(kpi["avg_inventory_turnover"], bl["avg_inventory_turnover"]) * 0.015 +
+            _penalty(
+                kpi["obsoletes_value"] / max(kpi["revenue"], 1.0)
+            ) * 0.010 +
+            _ratio(kpi["stock_interest_cost"], bl["stock_interest_cost"]) * 0.005
+        )
+
+        # 平衡 ROI (60%) 与 Agent KPI (40%)
+        rewards = {
+            "purchasing":   roi * 0.6 + purch_kpi,
+            "sales":        roi * 0.6 + sales_kpi,
+            "operations":   roi * 0.6 + ops_kpi,
+            "supplychain":  roi * 0.6 + sc_kpi,
+        }
+
+        return rewards
+
+    def set_baseline_kpis(self, kpis: Optional[Dict[str, float]]):
+        """设置用于密集奖励归一化的基线 KPI 值。
+
+        调用时机：使用随机策略运行若干 episode 后，
+        将平均 KPI 设为基线。
+        """
+        self._baseline_kpis = kpis
 
     def close(self):
         """清理资源（无外部资源需要释放）。"""

@@ -3,7 +3,6 @@ TFC 橙汁游戏 — 本地仿真引擎入口
 
 用法:
     python main.py
-
 修改策略：
   1. 编辑 purchasing.py 头部 SUPPLIER_DECISIONS
   2. 编辑 sales.py 头部 CUSTOMER_DECISIONS / WEEKLY_DEMAND_PIECES

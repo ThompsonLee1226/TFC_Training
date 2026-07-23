@@ -97,7 +97,7 @@ def train_agent(
     print(f"{'=' * 70}\n")
 
     # 创建环境
-    env = SingleAgentWrapper(agent_id=agent_id, n_rounds=1, use_noise=False)
+    env = SingleAgentWrapper(agent_id=agent_id, n_rounds=1, use_noise=True)
     env = Monitor(env)  # 记录 episode 统计
 
     # ── 训练前基线评估 ──

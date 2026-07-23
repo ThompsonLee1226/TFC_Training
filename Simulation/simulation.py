@@ -170,6 +170,8 @@ def run(seed: int = RANDOM_SEED) -> SimulationResult:
 
     # 生产和组件追踪
     total_produced_liters = 0.0
+    total_planned_liters = 0.0
+    total_overtime_days = 0
     total_components_ordered = 0.0
 
     # 预计算每个客户的周需求（升），用于服务水平计算
@@ -208,6 +210,8 @@ def run(seed: int = RANDOM_SEED) -> SimulationResult:
         total_waste_material_cost += getattr(prod_result, 'waste_material_cost', 0.0)
         actual_produced = prod_result.actual_liters
         total_produced_liters += actual_produced
+        total_planned_liters += getattr(prod_result, 'planned_liters', 0.0)
+        total_overtime_days += getattr(prod_result, 'weekend_overtime_days', 0)
 
         # ── 4) 消耗组件（按各产品实际产量 × BOM 直接反推）──
         if hasattr(prod_result, 'actual_by_product') and prod_result.actual_by_product:
@@ -594,17 +598,87 @@ def run(seed: int = RANDOM_SEED) -> SimulationResult:
 
     roi = pl.operating_profit / inv.total * 100 if inv.total > 0 else 0
 
-    """print(f"Simulation Result: ROI = {roi:.2f}%")"""
+    # ── Compute derived KPIs for agent-specific dense rewards ──
+    total_fulfilled_all = sum(total_fulfilled_liters.values())
+    purchase_and_transport = total_purchase + total_inbound_transport
+    handling_total = (
+        rm_wh["perm_labor_cost"] + rm_wh["flex_labor_cost"] +
+        fg_wh["perm_labor_cost"] + fg_wh["flex_labor_cost"]
+    )
+    warehouse_space_total = (
+        wh_costs["raw_space"] + wh_costs["fg_space"] + wh_costs["overflow"]
+    )
+    total_project = total_project_cost
+    avg_inventory_value = avg_component_value + avg_fg_value
 
     return SimulationResult(
         pl=pl, inv=inv, roi=roi,
         kpi_values={
+            # ── Global / Shared ──
+            "roi": roi,
             "revenue": total_revenue,
             "gross_margin": pl.gross_margin,
             "operating_profit": pl.operating_profit,
             "bonus_penalty": bonus_penalty_total,
             "service_level": (
                 sum(actual_sl.values()) / len(actual_sl) if actual_sl else 100.0
+            ),
+
+            # ── Purchasing-specific ──
+            "purchase_cost_total": purchase_and_transport,
+            "purchase_cost_per_liter": (
+                purchase_and_transport / total_produced_liters
+                if total_produced_liters > 0 else purchase_and_transport
+            ),
+            "component_waste_rate": (
+                total_waste_material_cost / purchase_and_transport
+                if purchase_and_transport > 0 else 0.0
+            ),
+            "ap_interest_saving": (
+                -ap_value * supplychain.INTEREST_RATE_ANNUAL * (WEEKS_PER_ROUND / 52)
+            ),
+            "supplier_project_cost": vmi_cost + sd_cost + dual_sourcing_cost,
+
+            # ── Sales-specific ──
+            "revenue_per_liter": (
+                total_revenue / total_fulfilled_all
+                if total_fulfilled_all > 0 else 0.0
+            ),
+            "bonus_penalty_ratio": (
+                bonus_penalty_total / total_revenue
+                if total_revenue > 0 else 0.0
+            ),
+            "ar_interest_cost": (
+                ar_value * supplychain.INTEREST_RATE_ANNUAL * (WEEKS_PER_ROUND / 52)
+            ),
+            "sales_project_cost": sales_vmi_cost,
+
+            # ── Operations-specific ──
+            "production_cost_per_liter": (
+                total_production_cost / total_produced_liters
+                if total_produced_liters > 0 else 0.0
+            ),
+            "production_efficiency": (
+                total_produced_liters / total_planned_liters
+                if total_planned_liters > 0 else 1.0
+            ),
+            "handling_cost_total": handling_total,
+            "warehouse_space_cost": warehouse_space_total,
+            "ops_project_cost": proj.get("total", 0),
+            "overtime_days": total_overtime_days,
+
+            # ── SupplyChain-specific ──
+            "avg_inventory_turnover": (
+                total_revenue / avg_inventory_value
+                if avg_inventory_value > 0 else 0.0
+            ),
+            "stock_interest_cost": stock_interest,
+            "stock_space_cost": warehouse_space_total,
+            "obsoletes_value": total_obsoletes,
+            "avg_inventory_value": avg_inventory_value,
+            "avg_inventory_days": (
+                avg_inventory_value / (total_revenue / WEEKS_PER_ROUND * 7)
+                if total_revenue > 0 else 0.0
             ),
         },
     )

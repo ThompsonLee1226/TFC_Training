@@ -13,18 +13,21 @@ Key features:
   - Rollout Buffer: collect n_steps before gradient update (standard PPO)
   - Centralized Critic: sees global state → eliminates partial-observability noise
   - Parameter Sharing: shared encoder across agents with agent-ID embeddings
-  - Normalization: running mean/std for observations and rewards
+  - Normalization: running mean/std for observations; fixed 1/100 scaling for rewards
   - TensorBoard: loss, clip_frac, approx_kl, explained_var, per-agent entropy
 
 Quickstart:
-  # Standard training (200k steps)
+  # Standard training (200k steps) — optimized defaults
   python marl/training/train_multi_agent.py
 
   # Quick smoke test (~30s)
   python marl/training/train_multi_agent.py --timesteps 2000 --eval-episodes 5 --n-rounds 4
 
-  # Longer episodes, tuned for convergence
-  python marl/training/train_multi_agent.py --n-rounds 16 --lr 1e-4 --n-steps 2048
+  # Longer episodes for long-horizon learning
+  python marl/training/train_multi_agent.py --n-rounds 16
+
+  # Ablation: enable running reward normalization (may squash sparse signal)
+  python marl/training/train_multi_agent.py --norm-reward
 
   # Ablation: disable parameter sharing
   python marl/training/train_multi_agent.py --no-share
@@ -39,8 +42,10 @@ TensorBoard metrics:
   eval/        — random_roi_mean, trained_roi_mean, improvement
 
 Diagnostic guide:
-  clip_fraction > 0.1  → increase n_steps or reduce lr (too much policy change)
+  clip_fraction > 0.10 → increase n_steps or reduce lr (too much policy change)
   approx_kl > 0.01     → reduce clip_range or lr (policy unstable)
+  approx_kl ≈ 0        → policy not learning; check reward signal, increase ent_coef
+  explained_var > 0.99 → WARNING: returns may have near-zero variance (dead signal)
   explained_var < 0    → critic is worse than mean prediction (needs tuning)
   entropy → 0          → policy collapsed (increase ent_coef)
   grad_norm saturates  → gradients are being clipped heavily (check max_grad_norm)
@@ -512,18 +517,19 @@ class MAPPTrainer:
         self,
         n_rounds: int = 8,
         use_noise: bool = True,
-        learning_rate: float = 3e-4,
-        n_steps: int = 1024,
-        batch_size: int = 64,
-        n_epochs: int = 10,
+        use_dense_rewards: bool = False,
+        learning_rate: float = 1e-4,
+        n_steps: int = 2048,
+        batch_size: int = 128,
+        n_epochs: int = 4,
         gamma: float = 0.99,
-        gae_lambda: float = 0.95,
-        clip_range: float = 0.2,
-        ent_coef: float = 0.01,
+        gae_lambda: float = 0.80,
+        clip_range: float = 0.15,
+        ent_coef: float = 0.02,
         vf_coef: float = 0.5,
-        max_grad_norm: float = 0.5,
+        max_grad_norm: float = 1.0,
         normalize_obs: bool = True,
-        normalize_reward: bool = True,
+        normalize_reward: bool = False,
         share_encoder: bool = True,
         seed: int = 42,
         model_dir: str = "",
@@ -532,6 +538,7 @@ class MAPPTrainer:
         # ── Store config ──
         self.n_rounds = n_rounds
         self.use_noise = use_noise
+        self.use_dense_rewards = use_dense_rewards
         self.lr = learning_rate
         self.n_steps = n_steps
         self.batch_size = batch_size
@@ -558,6 +565,7 @@ class MAPPTrainer:
             n_rounds=n_rounds,
             use_noise=use_noise,
             reward_scale=1.0,
+            use_dense_rewards=use_dense_rewards,
         )
 
         # ── Action / observation metadata ──
@@ -648,7 +656,14 @@ class MAPPTrainer:
         # ── Pre-training baseline ──
         if verbose:
             print("Evaluating random baseline...")
-        pre_roi = self._evaluate(n_episodes=eval_episodes, use_trained=False)
+        pre_roi, pre_kpis = self._evaluate(
+            n_episodes=eval_episodes, use_trained=False,
+            collect_kpis=self.use_dense_rewards,
+        )
+        if self.use_dense_rewards and pre_kpis:
+            self.env.set_baseline_kpis(pre_kpis)
+            if verbose:
+                print(f"  Baseline KPIs collected: {len(pre_kpis)} metrics")
         if verbose:
             print(f"  Random baseline: ROI = {pre_roi['mean']:.2f}% ± {pre_roi['std']:.2f}%\n")
 
@@ -723,7 +738,7 @@ class MAPPTrainer:
         # ── Post-training evaluation ──
         if verbose:
             print(f"\nTraining complete ({train_time:.0f}s). Evaluating...")
-        post_roi = self._evaluate(n_episodes=eval_episodes, use_trained=True)
+        post_roi, _ = self._evaluate(n_episodes=eval_episodes, use_trained=True)
         improvement = post_roi["mean"] - pre_roi["mean"]
         if verbose:
             print(f"  Trained:   ROI = {post_roi['mean']:.2f}% ± {post_roi['std']:.2f}%")
@@ -837,12 +852,13 @@ class MAPPTrainer:
             reward_window.append(raw_reward)
             value_window.append(value)
 
-            # Normalize reward
+            # Fixed reward scaling — avoids RunningNormalizer compressing sparse ROI signal to ~0
+            # ROI is typically in [-50, +50] range; /100 keeps it in [-0.5, +0.5]
             if self.normalize_reward:
                 self.reward_normalizer.update(np.array([raw_reward]))
                 norm_reward = self.reward_normalizer.normalize(np.array([raw_reward])).item()
             else:
-                norm_reward = raw_reward
+                norm_reward = raw_reward / 100.0
 
             # Store
             self.buffer.add(
@@ -1062,17 +1078,24 @@ class MAPPTrainer:
     # ═══════════════════════════════════════════════════════════════════
 
     @torch.no_grad()
-    def _evaluate(self, n_episodes: int = 20, use_trained: bool = True) -> dict:
+    def _evaluate(
+        self, n_episodes: int = 20, use_trained: bool = True,
+        collect_kpis: bool = False,
+    ) -> tuple:
         """Evaluate current policies over n_episodes.
 
         Args:
             n_episodes: Number of evaluation episodes.
             use_trained: If True, use trained policy; if False, random actions.
+            collect_kpis: If True, also collect average KPI values across episodes.
 
         Returns:
-            {"mean", "std", "min", "max", "values"}
+            (roi_dict, kpi_dict or None)
+              roi_dict = {"mean", "std", "min", "max", "values"}
+              kpi_dict = {kpi_name: avg_value} if collect_kpis else None
         """
         roi_values = []
+        all_kpis: Dict[str, list] = {}
         for i in range(n_episodes):
             obs_dict, _ = self.env.reset(seed=self.seed + 10000 + i)
             done = False
@@ -1087,18 +1110,30 @@ class MAPPTrainer:
                     else:
                         act = self.env.action_spaces[aid].sample()
                     actions[aid] = act
-                obs_dict, rewards, terminated, truncated, _ = self.env.step(actions)
+                obs_dict, rewards, terminated, truncated, info = self.env.step(actions)
                 done = terminated or truncated
             roi_values.append(rewards[_AGENT_ORDER[0]])
 
+            # Collect KPIs from the last step's info (contains final round result)
+            if collect_kpis and "kpi_values" in info:
+                for k, v in info["kpi_values"].items():
+                    if isinstance(v, (int, float, np.floating, np.integer)):
+                        all_kpis.setdefault(k, []).append(float(v))
+
         arr = np.array(roi_values)
-        return {
+        roi_result = {
             "mean": float(arr.mean()),
             "std": float(arr.std()),
             "min": float(arr.min()),
             "max": float(arr.max()),
             "values": roi_values,
         }
+
+        kpi_result = None
+        if collect_kpis and all_kpis:
+            kpi_result = {k: float(np.mean(vals)) for k, vals in all_kpis.items()}
+
+        return roi_result, kpi_result
 
     # ═══════════════════════════════════════════════════════════════════
     # Save / Load
@@ -1140,23 +1175,25 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Standard training (200k steps, ~8 rounds/episode)
-  py marl/training/train_multi_agent.py --timesteps 200000
+  # Standard training (200k steps) — optimized defaults: lr=1e-4, n_steps=2048
+  py marl/training/train_multi_agent.py
 
   # Quick smoke test (~30s, minimal compute)
   py marl/training/train_multi_agent.py --timesteps 2000 --eval-episodes 5 --n-rounds 4
 
-  # High-quality: longer episodes, more rollout steps, lower entropy
-  py marl/training/train_multi_agent.py --n-rounds 16 --n-steps 2048 --lr 1e-4 --ent-coef 0.005
+  # Longer episodes for long-horizon learning
+  py marl/training/train_multi_agent.py --n-rounds 16
+
+  # Enable running reward normalization (if reward variance is high)
+  py marl/training/train_multi_agent.py --norm-reward
 
   # Ablation: disable parameter sharing (per-agent independent encoders)
   py marl/training/train_multi_agent.py --no-share
 
-  # Ablation: disable all normalization
-  py marl/training/train_multi_agent.py --no-norm-obs --no-norm-reward
-
-  # Resume from checkpoint
-  # (models are saved to training_results/mappo_<time>/models/)
+  # Restore old hyperparams for comparison
+  py marl/training/train_multi_agent.py --lr 3e-4 --n-steps 1024 --batch-size 64 \\
+      --n-epochs 10 --gae-lambda 0.95 --clip-range 0.2 --ent-coef 0.01 \\
+      --max-grad-norm 0.5 --norm-reward
 
   # View TensorBoard
   tensorboard --logdir marl/training/training_results/
@@ -1164,6 +1201,8 @@ Examples:
 Diagnostic thresholds (check TensorBoard):
   clip_fraction > 0.10  → reduce lr or increase n-steps
   approx_kl > 0.01      → reduce clip-range or lr
+  approx_kl ≈ 0         → policy not learning; check reward signal, disable norm-reward
+  explained_var > 0.99  → WARNING: returns may have near-zero variance
   explained_var < 0     → critic failing; increase vf-coef or n-epochs
   entropy → 0           → policy collapsed; increase ent-coef
         """,
@@ -1179,36 +1218,38 @@ Diagnostic thresholds (check TensorBoard):
                         help="Random seed (default: 42)")
 
     # ── PPO hyperparams ──
-    parser.add_argument("--lr", type=float, default=3e-4,
-                        help="Learning rate (default: 3e-4)")
-    parser.add_argument("--n-steps", type=int, default=1024,
-                        help="Rollout steps per PPO update (default: 1024)")
-    parser.add_argument("--batch-size", type=int, default=64,
-                        help="Mini-batch size (default: 64)")
-    parser.add_argument("--n-epochs", type=int, default=10,
-                        help="PPO epochs per update (default: 10)")
+    parser.add_argument("--lr", type=float, default=1e-4,
+                        help="Learning rate (default: 1e-4)")
+    parser.add_argument("--n-steps", type=int, default=2048,
+                        help="Rollout steps per PPO update (default: 2048)")
+    parser.add_argument("--batch-size", type=int, default=128,
+                        help="Mini-batch size (default: 128)")
+    parser.add_argument("--n-epochs", type=int, default=4,
+                        help="PPO epochs per update (default: 4)")
     parser.add_argument("--gamma", type=float, default=0.99,
                         help="Discount factor (default: 0.99)")
-    parser.add_argument("--gae-lambda", type=float, default=0.95,
-                        help="GAE lambda (default: 0.95)")
-    parser.add_argument("--clip-range", type=float, default=0.2,
-                        help="PPO clip range (default: 0.2)")
-    parser.add_argument("--ent-coef", type=float, default=0.01,
-                        help="Entropy bonus coefficient (default: 0.01)")
+    parser.add_argument("--gae-lambda", type=float, default=0.80,
+                        help="GAE lambda (default: 0.80)")
+    parser.add_argument("--clip-range", type=float, default=0.15,
+                        help="PPO clip range (default: 0.15)")
+    parser.add_argument("--ent-coef", type=float, default=0.02,
+                        help="Entropy bonus coefficient (default: 0.02)")
     parser.add_argument("--vf-coef", type=float, default=0.5,
                         help="Value loss weight (default: 0.5)")
-    parser.add_argument("--max-grad-norm", type=float, default=0.5,
-                        help="Max gradient norm for clipping (default: 0.5)")
+    parser.add_argument("--max-grad-norm", type=float, default=1.0,
+                        help="Max gradient norm for clipping (default: 1.0)")
 
     # ── Features ──
     parser.add_argument("--no-noise", action="store_true",
                         help="Disable simulation noise (deterministic env)")
     parser.add_argument("--no-norm-obs", action="store_true",
                         help="Disable observation normalization")
-    parser.add_argument("--no-norm-reward", action="store_true",
-                        help="Disable reward normalization")
+    parser.add_argument("--norm-reward", action="store_true",
+                        help="Enable running reward normalization (disabled by default; may squash sparse ROI signal)")
     parser.add_argument("--no-share", action="store_true",
                         help="Disable parameter sharing (per-agent independent encoders)")
+    parser.add_argument("--dense-rewards", action="store_true",
+                        help="Enable per-agent dense rewards (ROI + agent-specific KPIs)")
 
     # ── Paths ──
     parser.add_argument("--model-dir", type=str, default="",
@@ -1239,6 +1280,7 @@ Diagnostic thresholds (check TensorBoard):
     trainer = MAPPTrainer(
         n_rounds=args.n_rounds,
         use_noise=not args.no_noise,
+        use_dense_rewards=args.dense_rewards,
         learning_rate=args.lr,
         n_steps=args.n_steps,
         batch_size=args.batch_size,
@@ -1250,7 +1292,7 @@ Diagnostic thresholds (check TensorBoard):
         vf_coef=args.vf_coef,
         max_grad_norm=args.max_grad_norm,
         normalize_obs=not args.no_norm_obs,
-        normalize_reward=not args.no_norm_reward,
+        normalize_reward=args.norm_reward,
         share_encoder=not args.no_share,
         seed=args.seed,
         model_dir=model_dir,
